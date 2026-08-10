@@ -1,0 +1,16 @@
+name = "lifeguard-timesheet"
+main = "worker.js"
+compatibility_date = "2024-11-01"
+workers_dev = true
+
+[assets]
+directory = "./dist"
+binding = "ASSETS"
+not_found_handling = "single-page-application"
+
+[[kv_namespaces]]
+binding = "DB"
+id = "4063cafae8ca41ecb7a37c4faf52606d"
+
+[vars]
+JWT_SECRET = "lifeguard-prod-secret-2026-hk-swimmer"

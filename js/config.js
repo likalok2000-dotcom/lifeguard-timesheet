@@ -1,13 +1,12 @@
 /**
  * 雲端 API 位址
- * - 本機 / 同源部署：用空字串（走 /api）
- * - GitHub Pages 會自動試同源，否則用下面 production 位址
+ * - Cloudflare Workers 同源：空字串
+ * - GitHub Pages：連長駐 Workers
  */
 (function () {
   "use strict";
-  // 全棧雲端 API（帳號資料庫）。GitHub Pages 前端會打呢度。
-  // 若你用 Render / Railway 部署 server，改成嗰個網址。
-  var PRODUCTION_API = "https://fresh-reflected-apollo-updates.trycloudflare.com";
+  // 24 小時長駐雲端（Cloudflare Workers）
+  var PRODUCTION_API = "https://lifeguard-timesheet.breezy-dolomite.workers.dev";
 
   var host = location.hostname;
   var isLocal =
@@ -15,8 +14,10 @@
     host === "127.0.0.1" ||
     host === "" ||
     host.endsWith(".local");
+  var isWorkers =
+    host.indexOf("workers.dev") !== -1 ||
+    host.indexOf("trycloudflare.com") !== -1;
 
-  // 自訂覆寫（開發用）
   var override = "";
   try {
     override = localStorage.getItem("lifeguard-api-base") || "";
@@ -24,12 +25,12 @@
 
   if (override) {
     window.LIFEGUARD_API = override.replace(/\/$/, "");
-  } else if (isLocal) {
+  } else if (isLocal || isWorkers) {
+    // 本機 server 或 Workers 同源
     window.LIFEGUARD_API = "";
   } else if (PRODUCTION_API) {
     window.LIFEGUARD_API = PRODUCTION_API.replace(/\/$/, "");
   } else {
-    // 同頁面伺服器有 /api（例如 cloudflared / render 全棧）
     window.LIFEGUARD_API = "";
   }
 })();
