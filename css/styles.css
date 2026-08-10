@@ -579,32 +579,111 @@ button.segment-row:active {
   font-size: 0.95rem;
 }
 
-.location-manage .staff-item {
-  cursor: default;
+/* ===== 常用地點：全部顯示、一撳即揀 ===== */
+.location-picker {
+  text-align: left;
+  margin: 4px 0 10px;
 }
 
-.location-manage .staff-item .btn-sm {
-  min-height: 36px;
-  padding: 6px 12px;
+.location-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 6px 0 10px;
+  min-height: 8px;
 }
 
-.location-row {
+.location-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 10px 14px;
+  border-radius: 999px;
+  border: 1.5px solid var(--border);
+  background: #fff;
+  color: var(--text);
+  font-size: 0.92rem;
+  font-weight: 700;
+  line-height: 1.2;
+  max-width: 100%;
+  word-break: break-word;
+  text-align: center;
+  box-shadow: 0 1px 4px rgba(15, 23, 42, 0.04);
+  transition: background 0.12s, border-color 0.12s, transform 0.1s;
+}
+
+.location-chip:active {
+  transform: scale(0.97);
+}
+
+.location-chip.selected {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
+  box-shadow: 0 4px 14px rgba(10, 77, 104, 0.28);
+}
+
+.location-chip.selected::before {
+  content: "✓ ";
+  font-weight: 800;
+}
+
+.location-add-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.location-add-row .text-input {
+  margin: 0;
+}
+
+.btn-add-loc {
+  min-height: var(--touch);
+  min-width: 72px;
+  padding: 0 14px;
+  white-space: nowrap;
+  margin-top: 0 !important;
+}
+
+.location-empty-hint {
+  margin: 0 0 8px !important;
+}
+
+.location-manage .location-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 10px;
   padding: 12px 14px;
-  background: var(--surface);
+  background: var(--bg);
   border-radius: var(--radius-sm);
   border: 1px solid var(--border);
   margin-bottom: 8px;
 }
 
 .location-row-name {
-  font-weight: 600;
+  font-weight: 700;
   flex: 1;
   min-width: 0;
   word-break: break-word;
+}
+
+.location-manage .btn-sm {
+  min-height: 40px;
+  padding: 6px 12px;
+  flex-shrink: 0;
+}
+
+.manage-chips {
+  margin-top: 12px;
+}
+
+.manage-chips .location-chip {
+  cursor: default;
+  opacity: 0.95;
 }
 
 .today-total-item {

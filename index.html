@@ -57,10 +57,15 @@
             <div id="idle-panel">
               <div class="clock-label">而家時間</div>
               <div class="clock-time" id="live-clock">--:--:--</div>
-              <label class="field-label" for="clock-location-pick">返工地址（常用選項）</label>
-              <select id="clock-location-pick" class="select-input location-pick" data-target="clock-location"></select>
-              <label class="field-label" for="clock-location">或輸入新地址</label>
-              <input type="text" id="clock-location" class="text-input" placeholder="打一次會自動加入選項" autocomplete="off" />
+              <div class="location-picker" data-target="clock-location">
+                <label class="field-label">返工地點（撳一下就揀 · 全部顯示）</label>
+                <div class="location-chips" data-chips-for="clock-location"></div>
+                <p class="muted small tip-line location-empty-hint hidden" data-empty-for="clock-location">未有常用地點 · 下面輸入後撳「加入」</p>
+                <div class="location-add-row">
+                  <input type="text" id="clock-location" class="text-input" placeholder="輸入新地點，例如：沙田泳池" autocomplete="off" />
+                  <button type="button" class="btn btn-secondary btn-add-loc" data-add-for="clock-location">加入</button>
+                </div>
+              </div>
               <button type="button" class="btn btn-primary btn-xl btn-block" id="btn-clock-in">開始返工</button>
               <p class="muted small tip-line">彈性工時：開始之後可隨時離開，即時計時同人工</p>
             </div>
@@ -141,10 +146,14 @@
               <input type="date" id="bonus-date" class="text-input" required />
               <label class="field-label" for="bonus-amount">額外金額（港幣）</label>
               <input type="number" id="bonus-amount" class="text-input" min="0" step="1" placeholder="例如：50" required inputmode="decimal" />
-              <label class="field-label" for="bonus-location-pick">返工地址（常用選項）</label>
-              <select id="bonus-location-pick" class="select-input location-pick" data-target="bonus-location"></select>
-              <label class="field-label" for="bonus-location">或輸入新地址</label>
-              <input type="text" id="bonus-location" class="text-input" placeholder="打一次會自動加入選項" autocomplete="off" />
+              <div class="location-picker" data-target="bonus-location">
+                <label class="field-label">返工地點（撳選 · 全部顯示）</label>
+                <div class="location-chips" data-chips-for="bonus-location"></div>
+                <div class="location-add-row">
+                  <input type="text" id="bonus-location" class="text-input" placeholder="新地點" autocomplete="off" />
+                  <button type="button" class="btn btn-secondary btn-add-loc" data-add-for="bonus-location">加入</button>
+                </div>
+              </div>
               <label class="field-label" for="bonus-note">備註（可選）</label>
               <input type="text" id="bonus-note" class="text-input" placeholder="例如：判頭加錢 / 小費 / 活動" autocomplete="off" />
               <button type="submit" class="btn btn-primary btn-block">記低呢筆額外人工</button>
@@ -167,10 +176,14 @@
                   <input type="time" id="manual-end" class="text-input" required />
                 </div>
               </div>
-              <label class="field-label" for="manual-location-pick">返工地址（常用選項）</label>
-              <select id="manual-location-pick" class="select-input location-pick" data-target="manual-location"></select>
-              <label class="field-label" for="manual-location">或輸入新地址</label>
-              <input type="text" id="manual-location" class="text-input" placeholder="打一次會自動加入選項" autocomplete="off" />
+              <div class="location-picker" data-target="manual-location">
+                <label class="field-label">返工地點（撳選 · 全部顯示）</label>
+                <div class="location-chips" data-chips-for="manual-location"></div>
+                <div class="location-add-row">
+                  <input type="text" id="manual-location" class="text-input" placeholder="新地點" autocomplete="off" />
+                  <button type="button" class="btn btn-secondary btn-add-loc" data-add-for="manual-location">加入</button>
+                </div>
+              </div>
               <label class="field-label" for="manual-bonus">判頭額外人工（可選）</label>
               <input type="number" id="manual-bonus" class="text-input" min="0" step="1" placeholder="0 = 無額外" inputmode="decimal" />
               <label class="field-label" for="manual-note">備註（可選）</label>
@@ -306,15 +319,18 @@
           </div>
 
           <div class="card">
-            <h2 class="card-title">常用返工地址</h2>
-            <p class="muted small">打過一次嘅地址會出現喺選項，之後直接揀，唔使每次重打。</p>
+            <h2 class="card-title">常用返工地點</h2>
+            <p class="muted small">可加多個地點（例如 4 個泳池／會所）。返工時<strong>全部顯示</strong>，撳一下就揀，唔使每次重打。</p>
             <form id="form-add-location" class="form-stack">
-              <label class="field-label" for="new-location">新增地址</label>
-              <input type="text" id="new-location" class="text-input" placeholder="例如：沙田主泳池" autocomplete="off" />
-              <button type="submit" class="btn btn-secondary btn-block">加入選項</button>
+              <label class="field-label" for="new-location">新增地點</label>
+              <div class="location-add-row">
+                <input type="text" id="new-location" class="text-input" placeholder="例如：沙田泳池 / 會所A / 會所B" autocomplete="off" />
+                <button type="submit" class="btn btn-secondary btn-add-loc">加入</button>
+              </div>
             </form>
+            <div class="location-chips manage-chips" id="location-manage-chips"></div>
             <div id="location-manage-list" class="list location-manage"></div>
-            <p class="empty-state small-empty hidden" id="location-empty">未有常用地址</p>
+            <p class="empty-state small-empty hidden" id="location-empty">未有常用地點 · 加 3–4 個最常用先最方便</p>
           </div>
 
           <div class="card">
@@ -407,10 +423,14 @@
             <input type="time" id="edit-end" class="text-input" />
           </div>
         </div>
-        <label class="field-label" for="edit-location-pick">返工地址（常用選項）</label>
-        <select id="edit-location-pick" class="select-input location-pick" data-target="edit-location"></select>
-        <label class="field-label" for="edit-location">或輸入新地址</label>
-        <input type="text" id="edit-location" class="text-input" />
+        <div class="location-picker" data-target="edit-location">
+          <label class="field-label">返工地點（撳選 · 全部顯示）</label>
+          <div class="location-chips" data-chips-for="edit-location"></div>
+          <div class="location-add-row">
+            <input type="text" id="edit-location" class="text-input" placeholder="新地點" />
+            <button type="button" class="btn btn-secondary btn-add-loc" data-add-for="edit-location">加入</button>
+          </div>
+        </div>
         <label class="field-label" for="edit-bonus">判頭額外人工</label>
         <input type="number" id="edit-bonus" class="text-input" min="0" step="1" inputmode="decimal" />
         <label class="field-label" for="edit-note">備註</label>

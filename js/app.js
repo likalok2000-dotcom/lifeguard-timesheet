@@ -275,67 +275,120 @@
     toast("已登出雲端（本機紀錄仍保留）");
   }
 
-  // ---------- 常用返工地址 ----------
+  // ---------- 常用返工地點（全部顯示、一撳即揀） ----------
   function rememberLocation(loc) {
     const name = String(loc || "").trim();
-    if (!name) return;
+    if (!name) return false;
     if (!Array.isArray(state.locations)) state.locations = [];
-    // 移到最前
+    // 已有就移到最前；新嘅加入（最多 30 個，夠晒多場）
     state.locations = [
       name,
       ...state.locations.filter((x) => x !== name),
-    ].slice(0, 50);
+    ].slice(0, 30);
+    return true;
   }
 
+  /** 渲染所有地點按鈕（每次都見晒，方便 4 個或更多） */
   function fillLocationSelects() {
     const locs = Array.isArray(state.locations) ? state.locations : [];
-    document.querySelectorAll(".location-pick").forEach((sel) => {
-      const targetId = sel.getAttribute("data-target");
+    document.querySelectorAll("[data-chips-for]").forEach((box) => {
+      const targetId = box.getAttribute("data-chips-for");
       const input = targetId ? document.getElementById(targetId) : null;
       const current = input ? input.value.trim() : "";
-      let html = '<option value="">— 揀常用返工地址 —</option>';
-      locs.forEach((loc) => {
-        const selAttr = loc === current ? " selected" : "";
-        html +=
-          '<option value="' +
-          escapeHtml(loc) +
-          '"' +
-          selAttr +
-          ">" +
-          escapeHtml(loc) +
-          "</option>";
-      });
-      html += '<option value="__new__">＋ 輸入新地址…</option>';
-      sel.innerHTML = html;
-      if (current && locs.includes(current)) sel.value = current;
-      else if (current) sel.value = "__new__";
-      else sel.value = "";
+      const emptyHint = document.querySelector(
+        '[data-empty-for="' + targetId + '"]'
+      );
+      if (!locs.length) {
+        box.innerHTML = "";
+        if (emptyHint) emptyHint.classList.remove("hidden");
+        return;
+      }
+      if (emptyHint) emptyHint.classList.add("hidden");
+      box.innerHTML = locs
+        .map((loc) => {
+          const on = loc === current ? " selected" : "";
+          return (
+            '<button type="button" class="location-chip' +
+            on +
+            '" data-loc="' +
+            escapeHtml(loc) +
+            '" data-for="' +
+            escapeHtml(targetId) +
+            '">' +
+            escapeHtml(loc) +
+            "</button>"
+          );
+        })
+        .join("");
     });
   }
 
-  function bindLocationPicks() {
-    document.querySelectorAll(".location-pick").forEach((sel) => {
-      sel.addEventListener("change", () => {
-        const targetId = sel.getAttribute("data-target");
-        const input = targetId ? document.getElementById(targetId) : null;
-        if (!input) return;
-        if (sel.value === "__new__") {
-          input.value = "";
-          input.focus();
-          return;
-        }
-        if (sel.value) {
-          input.value = sel.value;
-        }
+  function selectLocation(targetId, loc) {
+    const input = document.getElementById(targetId);
+    if (!input) return;
+    input.value = loc || "";
+    // 更新選中樣式
+    document
+      .querySelectorAll('[data-chips-for="' + targetId + '"] .location-chip')
+      .forEach((chip) => {
+        chip.classList.toggle(
+          "selected",
+          chip.getAttribute("data-loc") === loc
+        );
       });
+  }
+
+  function addLocationFromInput(inputId, clearAfter) {
+    const input = document.getElementById(inputId);
+    if (!input) return;
+    const v = input.value.trim();
+    if (!v) {
+      toast("請輸入地點名稱");
+      return;
+    }
+    rememberLocation(v);
+    saveState();
+    if (clearAfter) input.value = v; // 保持揀中呢個
+    fillLocationSelects();
+    renderLocationManage();
+    selectLocation(inputId, v);
+    toast("已加入常用地點：「" + v + "」");
+  }
+
+  function bindLocationPicks() {
+    // 撳地點 chip → 揀
+    document.addEventListener("click", (e) => {
+      const chip = e.target.closest(".location-chip[data-for]");
+      if (chip) {
+        e.preventDefault();
+        const targetId = chip.getAttribute("data-for");
+        const loc = chip.getAttribute("data-loc") || "";
+        selectLocation(targetId, loc);
+        return;
+      }
+      // 加入按鈕（各表單）
+      const addBtn = e.target.closest(".btn-add-loc[data-add-for]");
+      if (addBtn) {
+        e.preventDefault();
+        addLocationFromInput(addBtn.getAttribute("data-add-for"), false);
+      }
     });
   }
 
   function renderLocationManage() {
     const list = document.getElementById("location-manage-list");
+    const chips = document.getElementById("location-manage-chips");
     const empty = document.getElementById("location-empty");
     if (!list) return;
     const locs = Array.isArray(state.locations) ? state.locations : [];
+    if (chips) {
+      chips.innerHTML = locs
+        .map(
+          (loc) =>
+            '<span class="location-chip">' + escapeHtml(loc) + "</span>"
+        )
+        .join("");
+    }
     if (!locs.length) {
       list.innerHTML = "";
       if (empty) empty.classList.remove("hidden");
@@ -346,7 +399,7 @@
       .map(
         (loc, i) => `
       <div class="location-row" data-loc-index="${i}">
-        <span class="location-row-name">${escapeHtml(loc)}</span>
+        <span class="location-row-name">${i + 1}. ${escapeHtml(loc)}</span>
         <button type="button" class="btn btn-danger-outline btn-sm" data-del-loc="${escapeHtml(
           loc
         )}">移除</button>
@@ -1896,7 +1949,7 @@
         e.preventDefault();
         const v = document.getElementById("new-location").value.trim();
         if (!v) {
-          toast("請輸入地址");
+          toast("請輸入地點名稱");
           return;
         }
         rememberLocation(v);
@@ -1904,7 +1957,7 @@
         document.getElementById("new-location").value = "";
         fillLocationSelects();
         renderLocationManage();
-        toast("已加入常用地址");
+        toast("已加入常用地點：「" + v + "」· 返工時全部顯示");
       });
     document
       .getElementById("location-manage-list")
@@ -1912,12 +1965,13 @@
         const btn = e.target.closest("[data-del-loc]");
         if (!btn) return;
         const loc = btn.getAttribute("data-del-loc");
-        if (!confirm("由常用選項移除「" + loc + "」？\n（舊紀錄唔會刪）")) return;
+        if (!confirm("由常用地點移除「" + loc + "」？\n（舊返工紀錄唔會刪）"))
+          return;
         state.locations = (state.locations || []).filter((x) => x !== loc);
         saveState();
         fillLocationSelects();
         renderLocationManage();
-        toast("已移除選項");
+        toast("已移除地點");
       });
 
     // 雲端帳號
