@@ -99,6 +99,23 @@
 
   function saveState() {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    flashAutosave();
+  }
+
+  /** 提示：已自動儲存（唔會無故消失） */
+  function flashAutosave() {
+    const el = document.getElementById("autosave-hint");
+    if (!el) return;
+    el.textContent = "✓ 已自動儲存 · 可喺下面睇返以往紀錄";
+    el.classList.remove("flash");
+    // reflow to restart animation
+    void el.offsetWidth;
+    el.classList.add("flash");
+    clearTimeout(flashAutosave._t);
+    flashAutosave._t = setTimeout(() => {
+      el.textContent = "✓ 所有紀錄已自動儲存喺呢部手機";
+      el.classList.remove("flash");
+    }, 2200);
   }
 
   function uid() {
@@ -388,7 +405,7 @@
     renderHistory();
     renderPay();
     toast(
-      `已離開 · ${hoursLabel(hours)} · 賺到 ${money(pay)}（有額外可喺紀錄加）`
+      `已自動儲存 · ${hoursLabel(hours)} · 賺到 ${money(pay)}`
     );
   }
 
@@ -434,7 +451,7 @@
           </div>
           <div class="segment-right">
             <div class="segment-pay">${money(p)}</div>
-            <div class="segment-meta">撳入去改</div>
+            <div class="segment-meta">已儲存 · 撳睇</div>
           </div>
         </button>`);
       } else {
@@ -450,7 +467,7 @@
           </div>
           <div class="segment-right">
             <div class="segment-pay">${money(p)}</div>
-            <div class="segment-meta">撳入去改</div>
+            <div class="segment-meta">已儲存 · 撳睇</div>
           </div>
         </button>`);
       }
@@ -525,6 +542,59 @@
           "結算後即刻開 WhatsApp，訊息已寫好，你撳傳送就得";
       }
     }
+
+    // 主頁以往紀錄
+    renderHomePast();
+  }
+
+  /**
+   * 主頁顯示以往自動儲存嘅紀錄（唔包今日）
+   * 撳入去可睇明細；刪除只喺詳情入面、有需要先做
+   */
+  function renderHomePast() {
+    const list = document.getElementById("home-past-list");
+    const empty = document.getElementById("home-past-empty");
+    const badge = document.getElementById("past-count-badge");
+    if (!list) return;
+
+    const today = todayStr();
+    const byDay = groupByDay(state.shifts.filter((s) => s.date !== today));
+    const days = [...byDay.keys()].sort((a, b) => b.localeCompare(a));
+    // 主頁先顯示最近 14 日有紀錄嘅日子
+    const show = days.slice(0, 14);
+
+    if (badge) badge.textContent = `${days.length} 日`;
+
+    if (!show.length) {
+      list.innerHTML = "";
+      if (empty) empty.classList.remove("hidden");
+      return;
+    }
+    if (empty) empty.classList.add("hidden");
+
+    list.innerHTML = show
+      .map((date) => {
+        const segs = byDay.get(date);
+        const t = dayTotals(segs);
+        const sent =
+          state.sentLog && state.sentLog[date]
+            ? " · 已傳 WhatsApp"
+            : "";
+        return `
+        <button type="button" class="record-item day-item" data-day="${date}">
+          <div class="record-top">
+            <div>
+              <div class="record-name">${formatDateZh(date)}</div>
+              <div class="record-meta">${t.count} 項 · ${hoursLabel(t.hours)}${
+          t.bonus > 0 ? " · 額外 " + money(t.bonus) : ""
+        }${sent}</div>
+            </div>
+            <div class="record-hours">${money(t.pay)}</div>
+          </div>
+          <div class="record-pay">已自動儲存 · 撳入去睇（有需要先刪除）</div>
+        </button>`;
+      })
+      .join("");
   }
 
   // ---------- WhatsApp 結算傳判頭 ----------
@@ -733,7 +803,7 @@
     renderHistory();
     renderPay();
     toast(
-      `已記低 · ${hoursLabel(h)} · 合計 ${money(pay)}${
+      `已自動儲存 · ${hoursLabel(h)} · 合計 ${money(pay)}${
         bonus > 0 ? "（含額外 " + money(bonus) + "）" : ""
       }`
     );
@@ -769,7 +839,7 @@
     renderToday();
     renderHistory();
     renderPay();
-    toast(`已記判頭額外 ${money(amount)}`);
+    toast(`已自動儲存判頭額外 ${money(amount)}`);
   }
 
   // ---------- 紀錄（按日，可撳返） ----------
@@ -858,7 +928,7 @@
             </div>
             <div class="record-hours">${money(t.pay)}</div>
           </div>
-          <div class="record-pay">時薪 ${money(t.base)} + 額外 ${money(t.bonus)} · 撳入去睇</div>
+          <div class="record-pay">已自動儲存 · 時薪 ${money(t.base)} + 額外 ${money(t.bonus)} · 撳入去睇</div>
         </button>`;
       })
       .join("");
@@ -924,7 +994,7 @@
           </div>
           <div class="segment-right">
             <div class="segment-pay">${money(p)}</div>
-            <div class="segment-meta">改 / 再計</div>
+            <div class="segment-meta">已儲存 · 撳睇</div>
           </div>
         </button>`;
       })
@@ -1128,7 +1198,16 @@
 
   function deleteShift() {
     const id = document.getElementById("edit-id").value;
-    if (!confirm("刪除呢段紀錄？")) return;
+    if (
+      !confirm(
+        "確定要刪除呢段紀錄？\n\n平時紀錄會自動儲存，唔會自己消失。\n只有你確認先會剷除。"
+      )
+    ) {
+      return;
+    }
+    if (!confirm("再確認一次：真係刪除？（刪除後唔可以復原，除非有備份）")) {
+      return;
+    }
     const s = state.shifts.find((x) => x.id === id);
     const date = s?.date;
     state.shifts = state.shifts.filter((x) => x.id !== id);
@@ -1142,7 +1221,7 @@
     } else {
       closeDayModal();
     }
-    toast("已刪除");
+    toast("已刪除呢段 · 其他紀錄仍然自動保存");
   }
 
   // ---------- 我的錢 ----------
@@ -1446,7 +1525,7 @@
       .addEventListener("change", renderHistory);
     document.getElementById("pay-month").addEventListener("change", renderPay);
 
-    // 今日 / 日明細：撳時段 → 編輯
+    // 今日 / 日明細：撳時段 → 編輯（刪除只喺入面有需要先做）
     document.getElementById("today-segments").addEventListener("click", (e) => {
       const btn = e.target.closest("[data-shift-id]");
       if (btn) openEditModal(btn.dataset.shiftId);
@@ -1458,7 +1537,11 @@
         if (btn) openEditModal(btn.dataset.shiftId);
       });
 
-    // 紀錄按日
+    // 主頁以往紀錄 + 紀錄分頁 + 我的錢：按日睇
+    document.getElementById("home-past-list").addEventListener("click", (e) => {
+      const btn = e.target.closest("[data-day]");
+      if (btn) openDayModal(btn.dataset.day);
+    });
     document.getElementById("history-list").addEventListener("click", (e) => {
       const btn = e.target.closest("[data-day]");
       if (btn) openDayModal(btn.dataset.day);
@@ -1466,6 +1549,9 @@
     document.getElementById("pay-days-list").addEventListener("click", (e) => {
       const btn = e.target.closest("[data-day]");
       if (btn) openDayModal(btn.dataset.day);
+    });
+    document.getElementById("btn-go-history").addEventListener("click", () => {
+      switchTab("history");
     });
 
     document.querySelectorAll("[data-close-day]").forEach((el) => {

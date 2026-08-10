@@ -112,12 +112,25 @@
               </button>
               <p class="muted small tip-line" id="today-wa-status">結算後即刻開 WhatsApp，訊息已寫好，你撳傳送就得</p>
             </div>
+            <p class="autosave-hint" id="autosave-hint">✓ 所有紀錄已自動儲存喺呢部手機</p>
+          </div>
+
+          <!-- 主頁：以往紀錄（自動儲存，隨時睇返） -->
+          <div class="card past-home-card">
+            <div class="card-head">
+              <h2 class="card-title">以往紀錄</h2>
+              <span class="badge" id="past-count-badge">0 日</span>
+            </div>
+            <p class="muted small">返工／補記後會<strong>自動儲存</strong>，喺度隨時撳返睇。唔會自己刪除，有需要先入去剷除。</p>
+            <div id="home-past-list" class="list"></div>
+            <p class="empty-state small-empty hidden" id="home-past-empty">未有以往紀錄 · 返工後會自動出現</p>
+            <button type="button" class="btn btn-ghost btn-block" id="btn-go-history" style="margin-top:8px">睇晒全部紀錄</button>
           </div>
 
           <!-- 判頭隨時加錢 -->
           <div class="card bonus-card">
             <h2 class="card-title">判頭額外人工</h2>
-            <p class="muted small">判頭有時會多俾少少，喺度即時記低，計入今日同總人工</p>
+            <p class="muted small">判頭有時會多俾少少，喺度即時記低，計入今日同總人工（自動儲存）</p>
             <form id="form-bonus" class="form-stack">
               <label class="field-label" for="bonus-date">日期</label>
               <input type="date" id="bonus-date" class="text-input" required />
@@ -189,7 +202,7 @@
               <span class="summary-value" id="history-month-pay">$0</span>
             </div>
           </div>
-          <p class="muted small history-hint">撳某一日 → 睇計數明細 · 可再編輯</p>
+          <p class="muted small history-hint">全部自動儲存 · 撳某一日睇明細 · 有需要先入去改／刪除</p>
           <div id="history-list" class="list"></div>
           <p class="empty-state hidden" id="history-empty">呢個月未有紀錄</p>
         </section>
@@ -367,8 +380,8 @@
           <p class="pay-formula muted small" id="edit-preview-detail">—</p>
         </div>
         <div class="modal-actions">
-          <button type="button" class="btn btn-danger-outline" id="btn-delete-shift">刪除</button>
-          <button type="submit" class="btn btn-primary">儲存</button>
+          <button type="button" class="btn btn-danger-outline" id="btn-delete-shift">需要先刪除</button>
+          <button type="submit" class="btn btn-primary">儲存修改</button>
         </div>
       </form>
     </div>
