@@ -686,6 +686,95 @@ button.segment-row:active {
   opacity: 0.95;
 }
 
+/* ===== 我的錢：綜合詳細 + WhatsApp ===== */
+.wa-month-card {
+  border: 1.5px solid #86efac !important;
+  background: linear-gradient(165deg, #ffffff 0%, #ecfdf5 100%);
+}
+
+.pay-full-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.pay-day-block {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  overflow: hidden;
+}
+
+.pay-day-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 14px;
+  background: #fff;
+  border-bottom: 1px solid var(--border);
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+}
+
+.pay-day-head:active {
+  background: #f8fafc;
+}
+
+.pay-day-title {
+  font-weight: 800;
+  font-size: 0.98rem;
+}
+
+.pay-day-sub {
+  font-size: 0.78rem;
+  color: var(--muted);
+  margin-top: 2px;
+}
+
+.pay-day-total {
+  font-weight: 800;
+  color: var(--primary);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.pay-seg-list {
+  padding: 4px 0;
+}
+
+.pay-seg-item {
+  padding: 10px 14px;
+  border-bottom: 1px dashed var(--border);
+  font-size: 0.88rem;
+}
+
+.pay-seg-item:last-child {
+  border-bottom: none;
+}
+
+.pay-seg-line1 {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-weight: 700;
+}
+
+.pay-seg-line2 {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 0.82rem;
+  line-height: 1.4;
+}
+
+.pay-seg-pay {
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
 .today-total-item {
   display: flex;
   flex-direction: column;

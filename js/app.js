@@ -1570,7 +1570,13 @@
     toast("已刪除呢段 · 其他紀錄仍然自動保存");
   }
 
-  // ---------- 我的錢 ----------
+  // ---------- 我的錢（綜合全部詳細 + WhatsApp） ----------
+  function monthLabelZh(ym) {
+    if (!ym) return "全部時期";
+    const [y, m] = ym.split("-");
+    return `${y}年${Number(m)}月`;
+  }
+
   function renderPay() {
     const ym = document.getElementById("pay-month").value;
     const shifts = shiftsInMonth(ym);
@@ -1597,40 +1603,252 @@
     const bonusEl = document.getElementById("pay-bonus");
     if (baseEl) baseEl.textContent = money(base);
     if (bonusEl) bonusEl.textContent = money(bonus);
-    document.getElementById("pay-period").textContent = ym
-      ? `${ym.replace("-", "年")}月 · ${state.me?.name || ""}`
-      : `全部 · ${state.me?.name || ""}`;
+    document.getElementById("pay-period").textContent = `${monthLabelZh(ym)} · ${
+      state.me?.name || ""
+    }`;
     document.getElementById("pay-formula").textContent =
       p > 0 || h > 0
         ? `時薪 ${money(base)} + 判頭額外 ${money(bonus)} = ${money(p)}`
         : "工時 × 時薪 + 判頭額外 = 合計";
 
+    const countEl = document.getElementById("pay-detail-count");
+    if (countEl) countEl.textContent = `${shifts.length} 項`;
+
+    const waBtn = document.getElementById("btn-wa-month");
+    const waStatus = document.getElementById("pay-wa-status");
+    if (waBtn) waBtn.disabled = !shifts.length;
+    if (waStatus) {
+      if (!shifts.length) {
+        waStatus.textContent = "未有紀錄可傳";
+      } else {
+        waStatus.textContent = `將傳送 ${monthLabelZh(ym)} 共 ${
+          days.size
+        } 日 · ${shifts.length} 項詳細紀錄 · 合計 ${money(p)}`;
+      }
+    }
+
+    // 詳細：按日列出日子、時間、地址、工時、人工
     const byDay = groupByDay(shifts);
     const dayKeys = [...byDay.keys()].sort((a, b) => b.localeCompare(a));
+    const detail = document.getElementById("pay-full-detail");
+    const empty = document.getElementById("pay-detail-empty");
     const list = document.getElementById("pay-days-list");
+
     if (!dayKeys.length) {
-      list.innerHTML =
-        '<p class="muted small" style="margin:0">呢個月未有紀錄</p>';
+      if (detail) detail.innerHTML = "";
+      if (list) list.innerHTML = "";
+      if (empty) empty.classList.remove("hidden");
       return;
     }
-    list.innerHTML = dayKeys
-      .map((date) => {
-        const t = dayTotals(byDay.get(date));
-        return `
-        <button type="button" class="breakdown-row as-btn" data-day="${date}">
-          <div>
-            <div class="breakdown-name">${formatDateZh(date)}</div>
-            <div class="breakdown-detail">${t.count} 項 · ${hoursLabel(t.hours)}${
-          t.bonus > 0 ? " · 額外 " + money(t.bonus) : ""
-        }</div>
-          </div>
-          <div class="breakdown-pay-block">
-            <span class="breakdown-pay">${money(t.pay)}</span>
-            <div class="breakdown-calc">撳睇明細</div>
-          </div>
-        </button>`;
-      })
-      .join("");
+    if (empty) empty.classList.add("hidden");
+
+    if (detail) {
+      detail.innerHTML = dayKeys
+        .map((date) => {
+          const segs = (byDay.get(date) || []).slice().sort((a, b) => {
+            const ta = a.start || "99:99";
+            const tb = b.start || "99:99";
+            return ta.localeCompare(tb);
+          });
+          const t = dayTotals(segs);
+          const locs = [
+            ...new Set(
+              segs.map((s) => (s.location || "").trim()).filter(Boolean)
+            ),
+          ];
+          const locSummary = locs.length
+            ? locs.join("、")
+            : "未填地址";
+          const segsHtml = segs
+            .map((s) => {
+              if (isBonusOnly(s)) {
+                return `
+                <div class="pay-seg-item">
+                  <div class="pay-seg-line1">
+                    <span>判頭額外</span>
+                    <span class="pay-seg-pay">${money(shiftBonus(s))}</span>
+                  </div>
+                  <div class="pay-seg-line2">${
+                    s.location
+                      ? "📍 " + escapeHtml(s.location) + " · "
+                      : ""
+                  }${escapeHtml(s.note || "額外人工")}</div>
+                </div>`;
+              }
+              const hours = calcHours(s.date, s.start, s.end);
+              const r = shiftRate(s);
+              const b = calcPay(hours, r);
+              const bn = shiftBonus(s);
+              const total = b + bn;
+              return `
+                <div class="pay-seg-item">
+                  <div class="pay-seg-line1">
+                    <span>${s.start}–${s.end} · ${hoursLabel(hours)}</span>
+                    <span class="pay-seg-pay">${money(total)}</span>
+                  </div>
+                  <div class="pay-seg-line2">
+                    ${
+                      s.location
+                        ? "📍 " + escapeHtml(s.location) + "<br>"
+                        : "📍 未填地址<br>"
+                    }
+                    時薪 ${money(r)} → 工時人工 ${money(b)}${
+                bn > 0 ? " + 額外 " + money(bn) : ""
+              }${
+                s.note && s.note !== "彈性返工"
+                  ? "<br>備註：" + escapeHtml(s.note)
+                  : ""
+              }
+                  </div>
+                </div>`;
+            })
+            .join("");
+          return `
+            <div class="pay-day-block">
+              <button type="button" class="pay-day-head" data-day="${date}">
+                <div>
+                  <div class="pay-day-title">${formatDateZh(date)}</div>
+                  <div class="pay-day-sub">${t.count} 項 · ${hoursLabel(
+            t.hours
+          )} · ${escapeHtml(locSummary)}</div>
+                </div>
+                <div class="pay-day-total">${money(t.pay)}</div>
+              </button>
+              <div class="pay-seg-list">${segsHtml}</div>
+            </div>`;
+        })
+        .join("");
+    }
+
+    // 保留精簡列表（隱藏，兼容舊點擊）
+    if (list) {
+      list.innerHTML = dayKeys
+        .map((date) => {
+          const t = dayTotals(byDay.get(date));
+          return `<button type="button" class="breakdown-row as-btn" data-day="${date}" hidden></button>`;
+        })
+        .join("");
+    }
+  }
+
+  /**
+   * 綜合成月 WhatsApp 訊息：全部日子、時間、地址、工時、人工
+   */
+  function buildMonthWhatsAppMessage(ym) {
+    const shifts = shiftsInMonth(ym);
+    const name = state.me?.name || "救生員";
+    const rate = myRate();
+    const byDay = groupByDay(shifts);
+    const dayKeys = [...byDay.keys()].sort((a, b) => a.localeCompare(b));
+
+    let totalH = 0;
+    let totalBase = 0;
+    let totalBonus = 0;
+    shifts.forEach((s) => {
+      const hours = isBonusOnly(s) ? 0 : calcHours(s.date, s.start, s.end);
+      totalH += hours;
+      totalBase += calcPay(hours, shiftRate(s));
+      totalBonus += shiftBonus(s);
+    });
+    totalH = Math.round(totalH * 100) / 100;
+    totalBase = Math.round(totalBase * 100) / 100;
+    totalBonus = Math.round(totalBonus * 100) / 100;
+    const totalPay = Math.round((totalBase + totalBonus) * 100) / 100;
+
+    const lines = [];
+    lines.push("🏊 救生員人工綜合結算");
+    lines.push("——————————");
+    lines.push(`時期：${monthLabelZh(ym)}`);
+    lines.push(`姓名：${name}`);
+    lines.push(`時薪：${money(rate)}/時`);
+    lines.push(`返工日數：${dayKeys.length} 日`);
+    lines.push(`紀錄項數：${shifts.length} 項`);
+    lines.push("——————————");
+    lines.push("【詳細紀錄】");
+
+    dayKeys.forEach((date, di) => {
+      const segs = (byDay.get(date) || []).slice().sort((a, b) => {
+        const ta = a.start || "99:99";
+        const tb = b.start || "99:99";
+        return ta.localeCompare(tb);
+      });
+      const t = dayTotals(segs);
+      lines.push("");
+      lines.push(`${di + 1}) ${formatDateFull(date)}`);
+      let n = 0;
+      segs.forEach((s) => {
+        if (isBonusOnly(s)) {
+          lines.push(
+            `   ・判頭額外 ${money(shiftBonus(s))}${
+              s.location ? "｜📍" + s.location : ""
+            }${s.note ? "（" + s.note + "）" : ""}`
+          );
+        } else {
+          n += 1;
+          const hours = calcHours(s.date, s.start, s.end);
+          const b = calcPay(hours, shiftRate(s));
+          const bn = shiftBonus(s);
+          let line = `   ・${s.start}–${s.end}｜${hoursLabel(hours)}｜人工 ${money(
+            b + bn
+          )}`;
+          if (s.location) line += `\n     📍地址：${s.location}`;
+          if (bn > 0) line += `\n     （含額外 ${money(bn)}）`;
+          if (s.note && s.note !== "彈性返工") line += `\n     備註：${s.note}`;
+          lines.push(line);
+        }
+      });
+      lines.push(
+        `   ▶ 當日小計：${hoursLabel(t.hours)} · ${money(t.pay)}`
+      );
+    });
+
+    lines.push("");
+    lines.push("——————————");
+    lines.push("【合計】");
+    lines.push(`總工時：${hoursLabel(totalH)}`);
+    lines.push(`時薪人工：${money(totalBase)}`);
+    lines.push(`判頭額外：${money(totalBonus)}`);
+    lines.push(`✅ 應付合計：${money(totalPay)}`);
+    lines.push("——————————");
+    lines.push("（由「我的工時」App 綜合產生，方便判頭對數／出糧）");
+    return lines.join("\n");
+  }
+
+  function sendMonthToWhatsApp() {
+    const ym = document.getElementById("pay-month").value;
+    const shifts = shiftsInMonth(ym);
+    if (!shifts.length) {
+      toast("未有紀錄可傳");
+      return;
+    }
+    if (state.active) {
+      toast("請先離開完成進行中時段，再傳綜合結算");
+      return;
+    }
+    const text = buildMonthWhatsAppMessage(ym);
+    // WhatsApp 訊息長度限制約 65k，一般夠用；過長先提示
+    if (text.length > 60000) {
+      toast("紀錄太多，請先揀單一月份或匯出 CSV");
+      return;
+    }
+    const phone = normalizeWaPhone(state.me?.bossPhone || "");
+    const encoded = encodeURIComponent(text);
+    const url = phone
+      ? `https://wa.me/${phone}?text=${encoded}`
+      : `https://wa.me/?text=${encoded}`;
+
+    // 記低呢個月傳過
+    if (!state.sentLog) state.sentLog = {};
+    state.sentLog["month:" + (ym || "all")] = new Date().toISOString();
+    saveState();
+    renderPay();
+
+    window.location.href = url;
+    toast(
+      phone
+        ? "已開 WhatsApp · 綜合結算已寫好，撳傳送"
+        : "已開 WhatsApp · 請揀判頭再傳送"
+    );
   }
 
   function exportCsv() {
@@ -1941,6 +2159,17 @@
       const d = document.getElementById("day-modal-date").value;
       if (d) sendDayToWhatsApp(d);
     });
+    document
+      .getElementById("btn-wa-month")
+      .addEventListener("click", sendMonthToWhatsApp);
+
+    // 我的錢：詳細區撳日子
+    document
+      .getElementById("pay-full-detail")
+      .addEventListener("click", (e) => {
+        const btn = e.target.closest("[data-day]");
+        if (btn) openDayModal(btn.dataset.day);
+      });
 
     // 常用地址管理
     document

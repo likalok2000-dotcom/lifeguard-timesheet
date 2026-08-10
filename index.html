@@ -234,11 +234,12 @@
           <div class="filters card">
             <label class="field-label" for="pay-month">結算月份</label>
             <input type="month" id="pay-month" class="text-input" />
+            <p class="muted small tip-line">揀月份 → 睇晒所有日子、工時、地址、人工 → 一鍵 WhatsApp 傳俾判頭</p>
           </div>
           <div class="card payroll-hero">
-            <p class="payroll-kicker">我呢個月應付人工</p>
+            <p class="payroll-kicker">綜合應付人工</p>
             <div class="payroll-total" id="pay-total">$0</div>
-            <p class="payroll-sub" id="pay-formula">工時 × 時薪 = 人工</p>
+            <p class="payroll-sub" id="pay-formula">工時 × 時薪 + 判頭額外</p>
             <div class="payroll-meta" id="pay-period">—</div>
           </div>
           <div class="stats-grid">
@@ -263,12 +264,27 @@
               <span class="stat-unit">日</span>
             </div>
           </div>
+
+          <!-- 一鍵 WhatsApp 綜合結算 -->
+          <div class="card wa-month-card">
+            <h2 class="card-title">傳俾判頭</h2>
+            <p class="muted small">將呢個月<strong>全部詳細紀錄</strong>（日子、時間、地址、工時、人工）一次過寫好，開 WhatsApp 傳送。</p>
+            <button type="button" class="btn btn-whatsapp btn-block" id="btn-wa-month">
+              綜合結算 · WhatsApp 傳俾判頭
+            </button>
+            <p class="muted small tip-line" id="pay-wa-status">訊息包含所有日子、地址同人工合計</p>
+            <button type="button" class="btn btn-ghost btn-block" id="btn-export" style="margin-top:8px">匯出 CSV（Excel）</button>
+          </div>
+
           <div class="card">
             <div class="card-head">
-              <h2 class="card-title">每日明細</h2>
-              <button type="button" class="btn btn-ghost btn-sm" id="btn-export">匯出 CSV</button>
+              <h2 class="card-title">全部詳細紀錄</h2>
+              <span class="badge" id="pay-detail-count">0 項</span>
             </div>
-            <div id="pay-days-list" class="breakdown"></div>
+            <p class="muted small">日子 · 時間 · 地址 · 工時 · 人工（撳某一日可再改）</p>
+            <div id="pay-full-detail" class="pay-full-detail"></div>
+            <div id="pay-days-list" class="breakdown hidden"></div>
+            <p class="empty-state small-empty hidden" id="pay-detail-empty">呢個月未有紀錄</p>
           </div>
         </section>
 
