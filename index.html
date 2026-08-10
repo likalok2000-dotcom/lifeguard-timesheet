@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="我的工時" />
+  <meta name="theme-color" content="#0a4d68" />
+  <meta name="description" content="救生員個人返工計時 · 即時計人工 · 歷史紀錄" />
+  <title>我的工時 · 救生員</title>
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏊</text></svg>" />
+  <link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+  <div id="app">
+    <!-- 首次設定（一個返工人） -->
+    <div id="onboarding" class="onboarding hidden">
+      <div class="onboarding-inner">
+        <div class="onboarding-emoji">🏊</div>
+        <h1>我的工時</h1>
+        <p class="muted">以<strong>你自己</strong>返工嘅角度使用：開始 → 隨時離開 → 即時計人工 → 之後隨時撳返舊紀錄再睇</p>
+        <form id="form-onboard" class="form-stack">
+          <label class="field-label" for="onboard-name">你的名字</label>
+          <input type="text" id="onboard-name" class="text-input" placeholder="例如：阿明" required autocomplete="name" />
+          <label class="field-label" for="onboard-rate">你的時薪（港幣）</label>
+          <input type="number" id="onboard-rate" class="text-input" min="0" step="0.5" placeholder="例如：80" required inputmode="decimal" />
+          <button type="submit" class="btn btn-primary btn-xl btn-block">開始使用</button>
+        </form>
+      </div>
+    </div>
+
+    <div id="main-app" class="hidden">
+      <header class="app-header">
+        <div class="header-inner">
+          <div class="header-user">
+            <h1 id="page-title">今日</h1>
+            <p class="header-sub" id="header-me">—</p>
+          </div>
+        </div>
+      </header>
+
+      <main class="app-main">
+        <!-- ===== 今日返工 ===== -->
+        <section id="tab-today" class="tab-panel active" role="tabpanel">
+          <div class="card clock-card" id="clock-main">
+            <div class="clock-status" id="clock-status">
+              <span class="status-dot off" id="status-dot"></span>
+              <span id="status-text">未開始</span>
+            </div>
+            <div class="clock-date" id="live-date">—</div>
+
+            <div id="idle-panel">
+              <div class="clock-label">而家時間</div>
+              <div class="clock-time" id="live-clock">--:--:--</div>
+              <label class="field-label" for="clock-location">位置 / 場地（可選）</label>
+              <input type="text" id="clock-location" class="text-input" placeholder="例如：主泳池 / 某會所" autocomplete="off" />
+              <button type="button" class="btn btn-primary btn-xl btn-block" id="btn-clock-in">開始返工</button>
+              <p class="muted small tip-line">彈性工時：開始之後可隨時離開，即時計時同人工</p>
+            </div>
+
+            <div id="working-panel" class="hidden">
+              <div class="live-grid">
+                <div class="live-box">
+                  <span class="live-label">本段已做</span>
+                  <span class="live-value" id="elapsed-display">00:00:00</span>
+                </div>
+                <div class="live-box pay">
+                  <span class="live-label">本段人工</span>
+                  <span class="live-value" id="live-pay-display">$0</span>
+                </div>
+              </div>
+              <p class="live-meta" id="active-detail">—</p>
+              <p class="live-rate" id="live-rate-line">時薪 —</p>
+              <button type="button" class="btn btn-danger btn-xl btn-block" id="btn-clock-out">離開 · 即時結算</button>
+              <p class="muted small tip-line">離開後仍可再「開始返工」記下一時段</p>
+            </div>
+          </div>
+
+          <div class="card today-card">
+            <div class="card-head">
+              <h2 class="card-title">今日我賺到</h2>
+              <span class="badge" id="today-rate-badge">—</span>
+            </div>
+            <div class="today-totals">
+              <div class="today-total-item">
+                <span class="summary-label">今日工時</span>
+                <span class="summary-value" id="today-hours">0 小時</span>
+              </div>
+              <div class="today-total-item accent">
+                <span class="summary-label">今日人工</span>
+                <span class="summary-value" id="today-pay">$0</span>
+              </div>
+            </div>
+            <div class="today-totals three" id="today-bonus-row">
+              <div class="today-total-item">
+                <span class="summary-label">時薪人工</span>
+                <span class="summary-value small-val" id="today-base-pay">$0</span>
+              </div>
+              <div class="today-total-item">
+                <span class="summary-label">判頭額外</span>
+                <span class="summary-value small-val" id="today-bonus-pay">$0</span>
+              </div>
+            </div>
+            <p class="muted small" id="today-formula">工時 × 時薪 + 判頭額外 = 合計</p>
+            <div id="today-segments" class="today-segments"></div>
+            <p class="empty-state small-empty hidden" id="today-empty">今日未有返工 · 撳上面開始</p>
+            <div class="wa-actions" id="today-wa-box">
+              <button type="button" class="btn btn-whatsapp btn-block" id="btn-wa-today">
+                結算今日 · WhatsApp 傳俾判頭
+              </button>
+              <p class="muted small tip-line" id="today-wa-status">結算後即刻開 WhatsApp，訊息已寫好，你撳傳送就得</p>
+            </div>
+          </div>
+
+          <!-- 判頭隨時加錢 -->
+          <div class="card bonus-card">
+            <h2 class="card-title">判頭額外人工</h2>
+            <p class="muted small">判頭有時會多俾少少，喺度即時記低，計入今日同總人工</p>
+            <form id="form-bonus" class="form-stack">
+              <label class="field-label" for="bonus-date">日期</label>
+              <input type="date" id="bonus-date" class="text-input" required />
+              <label class="field-label" for="bonus-amount">額外金額（港幣）</label>
+              <input type="number" id="bonus-amount" class="text-input" min="0" step="1" placeholder="例如：50" required inputmode="decimal" />
+              <label class="field-label" for="bonus-location">位置 / 場地（可選）</label>
+              <input type="text" id="bonus-location" class="text-input" placeholder="例如：主泳池 / 某會所" autocomplete="off" />
+              <label class="field-label" for="bonus-note">備註（可選）</label>
+              <input type="text" id="bonus-note" class="text-input" placeholder="例如：判頭加錢 / 小費 / 活動" autocomplete="off" />
+              <button type="submit" class="btn btn-primary btn-block">記低呢筆額外人工</button>
+            </form>
+          </div>
+
+          <div class="card">
+            <h2 class="card-title">補記一小時段</h2>
+            <p class="muted small">漏咗打卡？補返時間，亦可一齊寫判頭額外</p>
+            <form id="form-manual" class="form-stack">
+              <label class="field-label" for="manual-date">日期</label>
+              <input type="date" id="manual-date" class="text-input" required />
+              <div class="row-2">
+                <div>
+                  <label class="field-label" for="manual-start">開始</label>
+                  <input type="time" id="manual-start" class="text-input" required />
+                </div>
+                <div>
+                  <label class="field-label" for="manual-end">結束</label>
+                  <input type="time" id="manual-end" class="text-input" required />
+                </div>
+              </div>
+              <label class="field-label" for="manual-location">位置 / 場地（可選）</label>
+              <input type="text" id="manual-location" class="text-input" placeholder="例如：主泳池" autocomplete="off" />
+              <label class="field-label" for="manual-bonus">判頭額外人工（可選）</label>
+              <input type="number" id="manual-bonus" class="text-input" min="0" step="1" placeholder="0 = 無額外" inputmode="decimal" />
+              <label class="field-label" for="manual-note">備註（可選）</label>
+              <input type="text" id="manual-note" class="text-input" placeholder="例如：活動支援" autocomplete="off" />
+              <div class="pay-preview" id="manual-pay-preview" aria-live="polite">
+                <div class="pay-preview-row">
+                  <span>工時人工</span>
+                  <strong id="manual-preview-base">—</strong>
+                </div>
+                <div class="pay-preview-row">
+                  <span>判頭額外</span>
+                  <strong id="manual-preview-bonus">—</strong>
+                </div>
+                <div class="pay-preview-row total">
+                  <span>呢段合計</span>
+                  <strong id="manual-preview-pay">—</strong>
+                </div>
+                <p class="pay-formula muted small" id="manual-preview-detail">工時 × 時薪 + 額外</p>
+              </div>
+              <button type="submit" class="btn btn-secondary btn-block">儲存並計人工</button>
+            </form>
+          </div>
+        </section>
+
+        <!-- ===== 紀錄（可撳返之前） ===== -->
+        <section id="tab-history" class="tab-panel" role="tabpanel" hidden>
+          <div class="filters card">
+            <label class="field-label" for="history-month">睇邊個月</label>
+            <input type="month" id="history-month" class="text-input" />
+          </div>
+          <div class="summary-bar card">
+            <div class="summary-item">
+              <span class="summary-label">呢個月工時</span>
+              <span class="summary-value" id="history-month-hours">0 小時</span>
+            </div>
+            <div class="summary-item accent">
+              <span class="summary-label">呢個月人工</span>
+              <span class="summary-value" id="history-month-pay">$0</span>
+            </div>
+          </div>
+          <p class="muted small history-hint">撳某一日 → 睇計數明細 · 可再編輯</p>
+          <div id="history-list" class="list"></div>
+          <p class="empty-state hidden" id="history-empty">呢個月未有紀錄</p>
+        </section>
+
+        <!-- ===== 我的錢 ===== -->
+        <section id="tab-pay" class="tab-panel" role="tabpanel" hidden>
+          <div class="filters card">
+            <label class="field-label" for="pay-month">結算月份</label>
+            <input type="month" id="pay-month" class="text-input" />
+          </div>
+          <div class="card payroll-hero">
+            <p class="payroll-kicker">我呢個月應付人工</p>
+            <div class="payroll-total" id="pay-total">$0</div>
+            <p class="payroll-sub" id="pay-formula">工時 × 時薪 = 人工</p>
+            <div class="payroll-meta" id="pay-period">—</div>
+          </div>
+          <div class="stats-grid">
+            <div class="stat-card">
+              <span class="stat-label">總工時</span>
+              <span class="stat-value" id="pay-hours">0</span>
+              <span class="stat-unit">小時</span>
+            </div>
+            <div class="stat-card">
+              <span class="stat-label">時薪人工</span>
+              <span class="stat-value" id="pay-base">$0</span>
+              <span class="stat-unit">工時×時薪</span>
+            </div>
+            <div class="stat-card">
+              <span class="stat-label">判頭額外</span>
+              <span class="stat-value" id="pay-bonus">$0</span>
+              <span class="stat-unit">加錢合計</span>
+            </div>
+            <div class="stat-card">
+              <span class="stat-label">返工日數</span>
+              <span class="stat-value" id="pay-days">0</span>
+              <span class="stat-unit">日</span>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-head">
+              <h2 class="card-title">每日明細</h2>
+              <button type="button" class="btn btn-ghost btn-sm" id="btn-export">匯出 CSV</button>
+            </div>
+            <div id="pay-days-list" class="breakdown"></div>
+          </div>
+        </section>
+
+        <!-- ===== 我 ===== -->
+        <section id="tab-me" class="tab-panel" role="tabpanel" hidden>
+          <div class="card">
+            <h2 class="card-title">我的資料</h2>
+            <p class="muted small">改時薪之後，新紀錄會用新時薪計；舊紀錄可喺紀錄入面再計</p>
+            <form id="form-profile" class="form-stack">
+              <label class="field-label" for="profile-name">名字</label>
+              <input type="text" id="profile-name" class="text-input" required autocomplete="name" />
+              <label class="field-label" for="profile-rate">時薪（港幣）</label>
+              <input type="number" id="profile-rate" class="text-input" min="0" step="0.5" required inputmode="decimal" />
+              <label class="field-label" for="profile-phone">我的電話（可選）</label>
+              <input type="tel" id="profile-phone" class="text-input" autocomplete="tel" />
+              <label class="field-label" for="profile-boss-phone">判頭 WhatsApp 電話</label>
+              <input type="tel" id="profile-boss-phone" class="text-input" placeholder="例如：91234567 或 85291234567" inputmode="tel" autocomplete="tel" />
+              <p class="muted small">填咗之後，結算可直接開判頭對話；唔填就自己揀聯絡人</p>
+              <button type="submit" class="btn btn-primary btn-block">儲存</button>
+            </form>
+          </div>
+          <div class="card">
+            <h2 class="card-title">資料備份</h2>
+            <p class="muted small" id="storage-hint">資料存在呢部手機瀏覽器，建議定期備份。</p>
+            <div class="btn-stack">
+              <button type="button" class="btn btn-secondary btn-block" id="btn-backup">備份 JSON</button>
+              <label class="btn btn-secondary btn-block file-label">
+                還原 JSON
+                <input type="file" id="input-restore" accept="application/json,.json" hidden />
+              </label>
+              <button type="button" class="btn btn-danger-outline btn-block" id="btn-clear">清除全部紀錄</button>
+            </div>
+          </div>
+          <div class="card about-card">
+            <h2 class="card-title">關於</h2>
+            <p class="muted small">專為救生員彈性返工 · iPhone 手機使用</p>
+            <p class="muted small">開始 → 離開 → 即時計人工 → 隨時撳返舊日再計</p>
+          </div>
+        </section>
+      </main>
+
+      <nav class="tab-bar" role="tablist" aria-label="主導覽">
+        <button type="button" class="tab-item active" data-tab="today" role="tab" aria-selected="true">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14"/></svg>
+          <span>今日</span>
+        </button>
+        <button type="button" class="tab-item" data-tab="history" role="tab" aria-selected="false">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>
+          <span>紀錄</span>
+        </button>
+        <button type="button" class="tab-item" data-tab="pay" role="tab" aria-selected="false">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1v22M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+          <span>我的錢</span>
+        </button>
+        <button type="button" class="tab-item" data-tab="me" role="tab" aria-selected="false">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+          <span>我</span>
+        </button>
+      </nav>
+    </div>
+  </div>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <!-- 某日明細（撳返之前） -->
+  <div id="day-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="day-modal-title">
+    <div class="modal-backdrop" data-close-day></div>
+    <div class="modal-sheet">
+      <div class="modal-handle"></div>
+      <h2 id="day-modal-title" class="modal-title">當日明細</h2>
+      <div class="day-modal-totals">
+        <div class="today-total-item">
+          <span class="summary-label">當日工時</span>
+          <span class="summary-value" id="day-modal-hours">—</span>
+        </div>
+        <div class="today-total-item accent">
+          <span class="summary-label">當日人工</span>
+          <span class="summary-value" id="day-modal-pay">—</span>
+        </div>
+      </div>
+      <p class="muted small" id="day-modal-formula" style="text-align:center">—</p>
+      <div id="day-modal-segments" class="today-segments"></div>
+      <input type="hidden" id="day-modal-date" value="" />
+      <button type="button" class="btn btn-whatsapp btn-block" id="btn-wa-day" style="margin-top:12px">
+        結算呢日 · WhatsApp 傳俾判頭
+      </button>
+      <p class="muted small tip-line" id="day-wa-status" style="text-align:center"></p>
+      <button type="button" class="btn btn-secondary btn-block" data-close-day style="margin-top:8px">關閉</button>
+    </div>
+  </div>
+
+  <!-- 編輯時段 -->
+  <div id="edit-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="edit-modal-title">
+    <div class="modal-backdrop" data-close-edit></div>
+    <div class="modal-sheet">
+      <div class="modal-handle"></div>
+      <h2 id="edit-modal-title" class="modal-title">編輯時段 · 重新計人工</h2>
+      <form id="form-edit" class="form-stack">
+        <input type="hidden" id="edit-id" />
+        <label class="field-label" for="edit-date">日期</label>
+        <input type="date" id="edit-date" class="text-input" required />
+        <div class="row-2" id="edit-time-row">
+          <div>
+            <label class="field-label" for="edit-start">開始</label>
+            <input type="time" id="edit-start" class="text-input" />
+          </div>
+          <div>
+            <label class="field-label" for="edit-end">結束</label>
+            <input type="time" id="edit-end" class="text-input" />
+          </div>
+        </div>
+        <label class="field-label" for="edit-location">位置 / 場地</label>
+        <input type="text" id="edit-location" class="text-input" />
+        <label class="field-label" for="edit-bonus">判頭額外人工</label>
+        <input type="number" id="edit-bonus" class="text-input" min="0" step="1" inputmode="decimal" />
+        <label class="field-label" for="edit-note">備註</label>
+        <input type="text" id="edit-note" class="text-input" />
+        <div class="pay-preview">
+          <div class="pay-preview-row">
+            <span>工時人工</span>
+            <strong id="edit-preview-base">—</strong>
+          </div>
+          <div class="pay-preview-row">
+            <span>判頭額外</span>
+            <strong id="edit-preview-bonus">—</strong>
+          </div>
+          <div class="pay-preview-row total">
+            <span>合計</span>
+            <strong id="edit-preview-pay">—</strong>
+          </div>
+          <p class="pay-formula muted small" id="edit-preview-detail">—</p>
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-danger-outline" id="btn-delete-shift">刪除</button>
+          <button type="submit" class="btn btn-primary">儲存</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script src="js/app.js"></script>
+</body>
+</html>

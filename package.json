@@ -1,0 +1,14 @@
+{
+  "name": "lifeguard-timesheet",
+  "version": "1.1.0",
+  "description": "救生員彈性返工 · 工時 · 人工 — 雲端長期可開",
+  "private": true,
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

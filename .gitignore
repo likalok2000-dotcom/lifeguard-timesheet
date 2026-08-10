@@ -1,0 +1,7 @@
+node_modules/
+data/store.json
+data/store.json.tmp
+*.log
+.DS_Store
+.vercel
+.netlify
