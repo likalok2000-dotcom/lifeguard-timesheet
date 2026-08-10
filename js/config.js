@@ -1,12 +1,12 @@
 /**
  * 雲端 API 位址
- * - Cloudflare Workers 同源：空字串
- * - GitHub Pages：連長駐 Workers
+ * - Cloudflare Pages 同源：空字串
+ * - GitHub Pages：連長駐 Cloudflare
  */
 (function () {
   "use strict";
-  // 24 小時長駐雲端（Cloudflare Workers）
-  var PRODUCTION_API = "https://lifeguard-timesheet.breezy-dolomite.workers.dev";
+  // 24 小時長駐（Cloudflare Pages 正式帳號）
+  var PRODUCTION_API = "https://lifeguard-timesheet.pages.dev";
 
   var host = location.hostname;
   var isLocal =
@@ -14,8 +14,9 @@
     host === "127.0.0.1" ||
     host === "" ||
     host.endsWith(".local");
-  var isWorkers =
+  var isCloudflareHost =
     host.indexOf("workers.dev") !== -1 ||
+    host.indexOf("pages.dev") !== -1 ||
     host.indexOf("trycloudflare.com") !== -1;
 
   var override = "";
@@ -25,8 +26,7 @@
 
   if (override) {
     window.LIFEGUARD_API = override.replace(/\/$/, "");
-  } else if (isLocal || isWorkers) {
-    // 本機 server 或 Workers 同源
+  } else if (isLocal || isCloudflareHost) {
     window.LIFEGUARD_API = "";
   } else if (PRODUCTION_API) {
     window.LIFEGUARD_API = PRODUCTION_API.replace(/\/$/, "");

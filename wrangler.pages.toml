@@ -1,13 +1,6 @@
 name = "lifeguard-timesheet"
-main = "worker.js"
 compatibility_date = "2024-11-01"
-workers_dev = true
-account_id = "c53ebe597ae1ba7080ff7471af551dad"
-
-[assets]
-directory = "./dist"
-binding = "ASSETS"
-not_found_handling = "single-page-application"
+pages_build_output_dir = "./dist"
 
 [[kv_namespaces]]
 binding = "DB"
