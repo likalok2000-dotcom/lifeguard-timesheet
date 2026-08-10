@@ -1,14 +1,18 @@
 services:
   - type: web
     name: lifeguard-timesheet
-    runtime: node
+    runtime: docker
     plan: free
-    buildCommand: "npm install || true"
-    startCommand: "node server.js"
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /api/health
     envVars:
-      - key: NODE_VERSION
-        value: "20"
+      - key: PORT
+        value: "8765"
+      - key: DATA_DIR
+        value: /app/data
+      - key: JWT_SECRET
+        generateValue: true
     disk:
-      name: lifeguard-data
-      mountPath: /opt/render/project/src/data
+      name: lifeguard-db
+      mountPath: /app/data
       sizeGB: 1

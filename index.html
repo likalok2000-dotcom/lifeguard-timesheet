@@ -12,6 +12,7 @@
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏊</text></svg>" />
   <link rel="stylesheet" href="css/styles.css" />
+  <script src="js/config.js"></script>
 </head>
 <body>
   <div id="app">
@@ -20,7 +21,7 @@
       <div class="onboarding-inner">
         <div class="onboarding-emoji">🏊</div>
         <h1>我的工時</h1>
-        <p class="muted">以<strong>你自己</strong>返工嘅角度使用：開始 → 隨時離開 → 即時計人工 → 之後隨時撳返舊紀錄再睇</p>
+        <p class="muted">以<strong>你自己</strong>返工嘅角度使用：開始 → 隨時離開 → 即時計人工 → 雲端帳號可換機搵返紀錄</p>
         <form id="form-onboard" class="form-stack">
           <label class="field-label" for="onboard-name">你的名字</label>
           <input type="text" id="onboard-name" class="text-input" placeholder="例如：阿明" required autocomplete="name" />
@@ -28,6 +29,8 @@
           <input type="number" id="onboard-rate" class="text-input" min="0" step="0.5" placeholder="例如：80" required inputmode="decimal" />
           <button type="submit" class="btn btn-primary btn-xl btn-block">開始使用</button>
         </form>
+        <p class="muted small" style="text-align:center;margin-top:14px">已有雲端帳號？</p>
+        <button type="button" class="btn btn-secondary btn-block" id="btn-onboard-login">登入帳號 · 還原紀錄</button>
       </div>
     </div>
 
@@ -54,8 +57,10 @@
             <div id="idle-panel">
               <div class="clock-label">而家時間</div>
               <div class="clock-time" id="live-clock">--:--:--</div>
-              <label class="field-label" for="clock-location">位置 / 場地（可選）</label>
-              <input type="text" id="clock-location" class="text-input" placeholder="例如：主泳池 / 某會所" autocomplete="off" />
+              <label class="field-label" for="clock-location-pick">返工地址（常用選項）</label>
+              <select id="clock-location-pick" class="select-input location-pick" data-target="clock-location"></select>
+              <label class="field-label" for="clock-location">或輸入新地址</label>
+              <input type="text" id="clock-location" class="text-input" placeholder="打一次會自動加入選項" autocomplete="off" />
               <button type="button" class="btn btn-primary btn-xl btn-block" id="btn-clock-in">開始返工</button>
               <p class="muted small tip-line">彈性工時：開始之後可隨時離開，即時計時同人工</p>
             </div>
@@ -136,8 +141,10 @@
               <input type="date" id="bonus-date" class="text-input" required />
               <label class="field-label" for="bonus-amount">額外金額（港幣）</label>
               <input type="number" id="bonus-amount" class="text-input" min="0" step="1" placeholder="例如：50" required inputmode="decimal" />
-              <label class="field-label" for="bonus-location">位置 / 場地（可選）</label>
-              <input type="text" id="bonus-location" class="text-input" placeholder="例如：主泳池 / 某會所" autocomplete="off" />
+              <label class="field-label" for="bonus-location-pick">返工地址（常用選項）</label>
+              <select id="bonus-location-pick" class="select-input location-pick" data-target="bonus-location"></select>
+              <label class="field-label" for="bonus-location">或輸入新地址</label>
+              <input type="text" id="bonus-location" class="text-input" placeholder="打一次會自動加入選項" autocomplete="off" />
               <label class="field-label" for="bonus-note">備註（可選）</label>
               <input type="text" id="bonus-note" class="text-input" placeholder="例如：判頭加錢 / 小費 / 活動" autocomplete="off" />
               <button type="submit" class="btn btn-primary btn-block">記低呢筆額外人工</button>
@@ -160,8 +167,10 @@
                   <input type="time" id="manual-end" class="text-input" required />
                 </div>
               </div>
-              <label class="field-label" for="manual-location">位置 / 場地（可選）</label>
-              <input type="text" id="manual-location" class="text-input" placeholder="例如：主泳池" autocomplete="off" />
+              <label class="field-label" for="manual-location-pick">返工地址（常用選項）</label>
+              <select id="manual-location-pick" class="select-input location-pick" data-target="manual-location"></select>
+              <label class="field-label" for="manual-location">或輸入新地址</label>
+              <input type="text" id="manual-location" class="text-input" placeholder="打一次會自動加入選項" autocomplete="off" />
               <label class="field-label" for="manual-bonus">判頭額外人工（可選）</label>
               <input type="number" id="manual-bonus" class="text-input" min="0" step="1" placeholder="0 = 無額外" inputmode="decimal" />
               <label class="field-label" for="manual-note">備註（可選）</label>
@@ -252,6 +261,33 @@
 
         <!-- ===== 我 ===== -->
         <section id="tab-me" class="tab-panel" role="tabpanel" hidden>
+          <!-- 雲端帳號 -->
+          <div class="card cloud-card">
+            <h2 class="card-title">雲端帳號 · 資料庫</h2>
+            <p class="muted small" id="cloud-status">登入後紀錄會同步雲端，換機／清瀏覽器都可登入搵返，唔使手動還原。</p>
+            <div id="cloud-logged-out">
+              <form id="form-cloud-login" class="form-stack">
+                <label class="field-label" for="cloud-username">帳號</label>
+                <input type="text" id="cloud-username" class="text-input" placeholder="自己設，例如 ming80" autocomplete="username" required />
+                <label class="field-label" for="cloud-password">密碼</label>
+                <input type="password" id="cloud-password" class="text-input" placeholder="至少 4 位" autocomplete="current-password" required />
+                <div class="row-2">
+                  <button type="submit" class="btn btn-primary btn-block" style="margin-top:8px">登入</button>
+                  <button type="button" class="btn btn-secondary btn-block" id="btn-cloud-register" style="margin-top:8px">註冊</button>
+                </div>
+              </form>
+              <p class="muted small tip-line">註冊會將而家手機上嘅紀錄一併上傳雲端。</p>
+            </div>
+            <div id="cloud-logged-in" class="hidden">
+              <p class="cloud-user-line">已登入：<strong id="cloud-user-label">—</strong></p>
+              <div class="btn-stack">
+                <button type="button" class="btn btn-primary btn-block" id="btn-cloud-sync">立即同步雲端</button>
+                <button type="button" class="btn btn-secondary btn-block" id="btn-cloud-pull">由雲端下載覆蓋本機</button>
+                <button type="button" class="btn btn-danger-outline btn-block" id="btn-cloud-logout">登出</button>
+              </div>
+            </div>
+          </div>
+
           <div class="card">
             <h2 class="card-title">我的資料</h2>
             <p class="muted small">改時薪之後，新紀錄會用新時薪計；舊紀錄可喺紀錄入面再計</p>
@@ -268,22 +304,35 @@
               <button type="submit" class="btn btn-primary btn-block">儲存</button>
             </form>
           </div>
+
           <div class="card">
-            <h2 class="card-title">資料備份</h2>
-            <p class="muted small" id="storage-hint">資料存在呢部手機瀏覽器，建議定期備份。</p>
+            <h2 class="card-title">常用返工地址</h2>
+            <p class="muted small">打過一次嘅地址會出現喺選項，之後直接揀，唔使每次重打。</p>
+            <form id="form-add-location" class="form-stack">
+              <label class="field-label" for="new-location">新增地址</label>
+              <input type="text" id="new-location" class="text-input" placeholder="例如：沙田主泳池" autocomplete="off" />
+              <button type="submit" class="btn btn-secondary btn-block">加入選項</button>
+            </form>
+            <div id="location-manage-list" class="list location-manage"></div>
+            <p class="empty-state small-empty hidden" id="location-empty">未有常用地址</p>
+          </div>
+
+          <div class="card">
+            <h2 class="card-title">本機備份</h2>
+            <p class="muted small" id="storage-hint">已登入雲端就唔使靠本機還原；以下係額外保險。</p>
             <div class="btn-stack">
               <button type="button" class="btn btn-secondary btn-block" id="btn-backup">備份 JSON</button>
               <label class="btn btn-secondary btn-block file-label">
                 還原 JSON
                 <input type="file" id="input-restore" accept="application/json,.json" hidden />
               </label>
-              <button type="button" class="btn btn-danger-outline btn-block" id="btn-clear">清除全部紀錄</button>
+              <button type="button" class="btn btn-danger-outline btn-block" id="btn-clear">清除本機紀錄</button>
             </div>
           </div>
           <div class="card about-card">
             <h2 class="card-title">關於</h2>
             <p class="muted small">專為救生員彈性返工 · iPhone 手機使用</p>
-            <p class="muted small">開始 → 離開 → 即時計人工 → 隨時撳返舊日再計</p>
+            <p class="muted small">開始 → 離開 → 即時計人工 → 雲端帳號搵返紀錄</p>
           </div>
         </section>
       </main>
@@ -358,7 +407,9 @@
             <input type="time" id="edit-end" class="text-input" />
           </div>
         </div>
-        <label class="field-label" for="edit-location">位置 / 場地</label>
+        <label class="field-label" for="edit-location-pick">返工地址（常用選項）</label>
+        <select id="edit-location-pick" class="select-input location-pick" data-target="edit-location"></select>
+        <label class="field-label" for="edit-location">或輸入新地址</label>
         <input type="text" id="edit-location" class="text-input" />
         <label class="field-label" for="edit-bonus">判頭額外人工</label>
         <input type="number" id="edit-bonus" class="text-input" min="0" step="1" inputmode="decimal" />
@@ -383,6 +434,23 @@
           <button type="button" class="btn btn-danger-outline" id="btn-delete-shift">需要先刪除</button>
           <button type="submit" class="btn btn-primary">儲存修改</button>
         </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- 登入彈窗（由 onboarding 進入） -->
+  <div id="login-modal" class="modal hidden" role="dialog" aria-modal="true">
+    <div class="modal-backdrop" data-close-login></div>
+    <div class="modal-sheet">
+      <div class="modal-handle"></div>
+      <h2 class="modal-title">登入雲端帳號</h2>
+      <form id="form-login-modal" class="form-stack">
+        <label class="field-label" for="login-modal-user">帳號</label>
+        <input type="text" id="login-modal-user" class="text-input" required autocomplete="username" />
+        <label class="field-label" for="login-modal-pass">密碼</label>
+        <input type="password" id="login-modal-pass" class="text-input" required autocomplete="current-password" />
+        <button type="submit" class="btn btn-primary btn-block">登入並載入紀錄</button>
+        <button type="button" class="btn btn-secondary btn-block" data-close-login>取消</button>
       </form>
     </div>
   </div>

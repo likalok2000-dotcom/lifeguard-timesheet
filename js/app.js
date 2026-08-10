@@ -7,6 +7,7 @@
 
   const STORAGE_KEY = "lifeguard-me-v2";
   const LEGACY_KEY = "lifeguard-timesheet-v1";
+  const AUTH_KEY = "lifeguard-auth-v1";
 
   const TITLES = {
     today: "今日",
@@ -19,35 +20,57 @@
    * @typedef {{ name: string, rate: number, phone: string, bossPhone?: string }} Me
    * @typedef {{ id: string, date: string, start: string, end: string, location: string, note: string, rate: number, bonus: number, kind?: string, createdAt: string }} Shift
    * @typedef {{ startISO: string, location: string }} Active
-   * @typedef {{ me: Me|null, shifts: Shift[], active: Active|null, sentLog: Record<string, string> }} State
+   * @typedef {{ me: Me|null, shifts: Shift[], active: Active|null, sentLog: Record<string, string>, locations: string[] }} State
+   * @typedef {{ token: string, username: string }} Auth
    */
 
   /** @type {State} */
   let state = loadState();
+  /** @type {Auth|null} */
+  let auth = loadAuth();
+  let cloudSyncTimer = null;
 
   // ---------- Storage + 舊版遷移 ----------
   function defaultState() {
-    return { me: null, shifts: [], active: null, sentLog: {} };
+    return {
+      me: null,
+      shifts: [],
+      active: null,
+      sentLog: {},
+      locations: [],
+    };
+  }
+
+  function normalizeState(p) {
+    const shifts = (Array.isArray(p.shifts) ? p.shifts : []).map((s) => ({
+      ...s,
+      bonus: Number(s.bonus) || 0,
+      kind: s.kind || (s.start && s.end ? "shift" : "bonus"),
+      location: s.location || "",
+      note: s.note || "",
+    }));
+    // 由舊紀錄自動收集地址
+    const fromShifts = shifts
+      .map((s) => (s.location || "").trim())
+      .filter(Boolean);
+    let locations = Array.isArray(p.locations) ? p.locations.slice() : [];
+    fromShifts.forEach((loc) => {
+      if (!locations.includes(loc)) locations.push(loc);
+    });
+    return {
+      me: p.me || null,
+      shifts,
+      active: p.active || null,
+      sentLog: p.sentLog && typeof p.sentLog === "object" ? p.sentLog : {},
+      locations,
+    };
   }
 
   function loadState() {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
       if (raw) {
-        const p = JSON.parse(raw);
-        return {
-          me: p.me || null,
-          shifts: (Array.isArray(p.shifts) ? p.shifts : []).map((s) => ({
-            ...s,
-            bonus: Number(s.bonus) || 0,
-            kind: s.kind || (s.start && s.end ? "shift" : "bonus"),
-            location: s.location || "",
-            note: s.note || "",
-          })),
-          active: p.active || null,
-          sentLog:
-            p.sentLog && typeof p.sentLog === "object" ? p.sentLog : {},
-        };
+        return normalizeState(JSON.parse(raw));
       }
       // 遷移舊多人版資料
       const legacy = localStorage.getItem(LEGACY_KEY);
@@ -70,7 +93,7 @@
             kind: s.kind || "shift",
             createdAt: s.createdAt || new Date().toISOString(),
           }));
-        const migrated = {
+        const migrated = normalizeState({
           me: first
             ? {
                 name: first.name,
@@ -87,7 +110,8 @@
               }
             : null,
           sentLog: {},
-        };
+          locations: [],
+        });
         localStorage.setItem(STORAGE_KEY, JSON.stringify(migrated));
         return migrated;
       }
@@ -97,9 +121,265 @@
     return defaultState();
   }
 
+  function loadAuth() {
+    try {
+      const raw = localStorage.getItem(AUTH_KEY);
+      if (!raw) return null;
+      const a = JSON.parse(raw);
+      if (a && a.token && a.username) return a;
+    } catch {
+      /* ignore */
+    }
+    return null;
+  }
+
+  function saveAuth(a) {
+    auth = a;
+    if (a) localStorage.setItem(AUTH_KEY, JSON.stringify(a));
+    else localStorage.removeItem(AUTH_KEY);
+    updateCloudUI();
+  }
+
+  function apiBase() {
+    return typeof window.LIFEGUARD_API === "string"
+      ? window.LIFEGUARD_API
+      : "";
+  }
+
+  function apiUrl(path) {
+    return apiBase() + path;
+  }
+
+  async function apiFetch(path, options) {
+    const opts = options || {};
+    const headers = Object.assign(
+      { "Content-Type": "application/json" },
+      opts.headers || {}
+    );
+    if (auth && auth.token) {
+      headers.Authorization = "Bearer " + auth.token;
+    }
+    const res = await fetch(apiUrl(path), {
+      method: opts.method || "GET",
+      headers,
+      body: opts.body,
+    });
+    let data = null;
+    try {
+      data = await res.json();
+    } catch {
+      data = {};
+    }
+    if (!res.ok) {
+      const err = new Error((data && data.error) || "請求失敗");
+      err.status = res.status;
+      throw err;
+    }
+    return data;
+  }
+
   function saveState() {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
     flashAutosave();
+    scheduleCloudPush();
+  }
+
+  function scheduleCloudPush() {
+    if (!auth || !auth.token) return;
+    clearTimeout(cloudSyncTimer);
+    cloudSyncTimer = setTimeout(() => {
+      pushToCloud(true).catch(() => {});
+    }, 800);
+  }
+
+  async function pushToCloud(silent) {
+    if (!auth || !auth.token) return;
+    try {
+      await apiFetch("/api/data", {
+        method: "PUT",
+        body: JSON.stringify({
+          me: state.me,
+          shifts: state.shifts,
+          active: state.active,
+          sentLog: state.sentLog,
+          locations: state.locations,
+        }),
+      });
+      if (!silent) toast("已同步到雲端資料庫");
+      const hint = document.getElementById("cloud-status");
+      if (hint) {
+        hint.textContent =
+          "已登入雲端 · 紀錄自動同步 · 換機登入可搵返全部紀錄";
+      }
+    } catch (e) {
+      if (!silent) toast("雲端同步失敗：" + (e.message || e));
+    }
+  }
+
+  async function pullFromCloud() {
+    if (!auth || !auth.token) {
+      toast("請先登入");
+      return;
+    }
+    const res = await apiFetch("/api/data");
+    if (res && res.data) {
+      state = normalizeState(res.data);
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      fillLocationSelects();
+      renderLocationManage();
+      showApp();
+      toast("已由雲端載入紀錄");
+    }
+  }
+
+  async function cloudRegister(username, password) {
+    const res = await apiFetch("/api/register", {
+      method: "POST",
+      body: JSON.stringify({
+        username,
+        password,
+        me: state.me,
+        shifts: state.shifts,
+        locations: state.locations,
+        sentLog: state.sentLog,
+      }),
+    });
+    saveAuth({ token: res.token, username: res.username });
+    if (res.data) {
+      // 雲端以剛上傳為準
+      state = normalizeState(res.data);
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    }
+    showApp();
+    toast("註冊成功 · 紀錄已上雲端");
+  }
+
+  async function cloudLogin(username, password) {
+    const res = await apiFetch("/api/login", {
+      method: "POST",
+      body: JSON.stringify({ username, password }),
+    });
+    saveAuth({ token: res.token, username: res.username });
+    if (res.data) {
+      state = normalizeState(res.data);
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    }
+    fillLocationSelects();
+    renderLocationManage();
+    showApp();
+    toast("登入成功 · 已載入你的雲端紀錄");
+  }
+
+  function cloudLogout() {
+    saveAuth(null);
+    toast("已登出雲端（本機紀錄仍保留）");
+  }
+
+  // ---------- 常用返工地址 ----------
+  function rememberLocation(loc) {
+    const name = String(loc || "").trim();
+    if (!name) return;
+    if (!Array.isArray(state.locations)) state.locations = [];
+    // 移到最前
+    state.locations = [
+      name,
+      ...state.locations.filter((x) => x !== name),
+    ].slice(0, 50);
+  }
+
+  function fillLocationSelects() {
+    const locs = Array.isArray(state.locations) ? state.locations : [];
+    document.querySelectorAll(".location-pick").forEach((sel) => {
+      const targetId = sel.getAttribute("data-target");
+      const input = targetId ? document.getElementById(targetId) : null;
+      const current = input ? input.value.trim() : "";
+      let html = '<option value="">— 揀常用返工地址 —</option>';
+      locs.forEach((loc) => {
+        const selAttr = loc === current ? " selected" : "";
+        html +=
+          '<option value="' +
+          escapeHtml(loc) +
+          '"' +
+          selAttr +
+          ">" +
+          escapeHtml(loc) +
+          "</option>";
+      });
+      html += '<option value="__new__">＋ 輸入新地址…</option>';
+      sel.innerHTML = html;
+      if (current && locs.includes(current)) sel.value = current;
+      else if (current) sel.value = "__new__";
+      else sel.value = "";
+    });
+  }
+
+  function bindLocationPicks() {
+    document.querySelectorAll(".location-pick").forEach((sel) => {
+      sel.addEventListener("change", () => {
+        const targetId = sel.getAttribute("data-target");
+        const input = targetId ? document.getElementById(targetId) : null;
+        if (!input) return;
+        if (sel.value === "__new__") {
+          input.value = "";
+          input.focus();
+          return;
+        }
+        if (sel.value) {
+          input.value = sel.value;
+        }
+      });
+    });
+  }
+
+  function renderLocationManage() {
+    const list = document.getElementById("location-manage-list");
+    const empty = document.getElementById("location-empty");
+    if (!list) return;
+    const locs = Array.isArray(state.locations) ? state.locations : [];
+    if (!locs.length) {
+      list.innerHTML = "";
+      if (empty) empty.classList.remove("hidden");
+      return;
+    }
+    if (empty) empty.classList.add("hidden");
+    list.innerHTML = locs
+      .map(
+        (loc, i) => `
+      <div class="location-row" data-loc-index="${i}">
+        <span class="location-row-name">${escapeHtml(loc)}</span>
+        <button type="button" class="btn btn-danger-outline btn-sm" data-del-loc="${escapeHtml(
+          loc
+        )}">移除</button>
+      </div>`
+      )
+      .join("");
+  }
+
+  function updateCloudUI() {
+    const out = document.getElementById("cloud-logged-out");
+    const inn = document.getElementById("cloud-logged-in");
+    const label = document.getElementById("cloud-user-label");
+    const status = document.getElementById("cloud-status");
+    const hint = document.getElementById("autosave-hint");
+    if (auth && auth.username) {
+      if (out) out.classList.add("hidden");
+      if (inn) inn.classList.remove("hidden");
+      if (label) label.textContent = auth.username;
+      if (status) {
+        status.textContent =
+          "已登入雲端 · 紀錄自動同步 · 換機登入可搵返全部紀錄";
+      }
+      if (hint) {
+        hint.textContent = "✓ 已自動儲存（本機 + 雲端帳號）";
+      }
+    } else {
+      if (out) out.classList.remove("hidden");
+      if (inn) inn.classList.add("hidden");
+      if (status) {
+        status.textContent =
+          "登入後紀錄會同步雲端，換機／清瀏覽器都可登入搵返，唔使手動還原。";
+      }
+    }
   }
 
   /** 提示：已自動儲存（唔會無故消失） */
@@ -238,6 +518,9 @@
     if (hasMe) {
       updateHeader();
       updateClockUI();
+      fillLocationSelects();
+      renderLocationManage();
+      updateCloudUI();
       renderToday();
       renderHistory();
       renderPay();
@@ -356,11 +639,13 @@
       return;
     }
     const location = document.getElementById("clock-location").value.trim();
+    if (location) rememberLocation(location);
     state.active = {
       startISO: new Date().toISOString(),
       location,
     };
     saveState();
+    fillLocationSelects();
     updateClockUI();
     renderToday();
     toast(`開始返工 · 時薪 ${money(myRate())} · 即時計人工`);
@@ -783,6 +1068,7 @@
     const rate = myRate();
     const base = calcPay(h, rate);
     const pay = base + bonus;
+    if (location) rememberLocation(location);
     state.shifts.push({
       id: uid(),
       date,
@@ -798,6 +1084,7 @@
     saveState();
     e.target.reset();
     document.getElementById("manual-date").value = todayStr();
+    fillLocationSelects();
     updateManualPreview();
     renderToday();
     renderHistory();
@@ -821,6 +1108,7 @@
       toast("請填日期同額外金額");
       return;
     }
+    if (location) rememberLocation(location);
     state.shifts.push({
       id: uid(),
       date,
@@ -836,6 +1124,7 @@
     saveState();
     e.target.reset();
     document.getElementById("bonus-date").value = todayStr();
+    fillLocationSelects();
     renderToday();
     renderHistory();
     renderPay();
@@ -1019,6 +1308,7 @@
     document.getElementById("edit-location").value = s.location || "";
     document.getElementById("edit-note").value = s.note || "";
     document.getElementById("edit-bonus").value = shiftBonus(s) || "";
+    fillLocationSelects();
     const timeRow = document.getElementById("edit-time-row");
     const startInput = document.getElementById("edit-start");
     const endInput = document.getElementById("edit-end");
@@ -1174,18 +1464,21 @@
     }
     const base = calcPay(h, rate);
     const pay = base + bonus;
+    const locEdit = document.getElementById("edit-location").value.trim();
+    if (locEdit) rememberLocation(locEdit);
     state.shifts[idx] = {
       ...state.shifts[idx],
       date,
       start,
       end,
-      location: document.getElementById("edit-location").value.trim(),
+      location: locEdit,
       note: document.getElementById("edit-note").value.trim(),
       rate,
       bonus,
       kind: "shift",
     };
     saveState();
+    fillLocationSelects();
     closeEditModal();
     renderToday();
     renderHistory();
@@ -1426,7 +1719,7 @@
           throw new Error("格式錯誤");
         }
         if (!confirm("還原會覆蓋而家全部紀錄，確定？")) return;
-        state = {
+        state = normalizeState({
           me: data.me,
           shifts: data.shifts,
           active: data.active || null,
@@ -1434,8 +1727,9 @@
             data.sentLog && typeof data.sentLog === "object"
               ? data.sentLog
               : {},
-        };
-        saveState();
+          locations: data.locations || [],
+        });
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
         showApp();
         toast("已還原");
       } catch {
@@ -1486,7 +1780,12 @@
       updateClockUI();
       renderToday();
     }
-    if (name === "me") fillProfileForm();
+    if (name === "me") {
+      fillProfileForm();
+      updateCloudUI();
+      renderLocationManage();
+      fillLocationSelects();
+    }
   }
 
   // ---------- Init ----------
@@ -1496,7 +1795,14 @@
     document.getElementById("manual-date").value = todayStr();
     document.getElementById("bonus-date").value = todayStr();
 
+    bindLocationPicks();
     showApp();
+    // 若已登入，背景靜默同步一次
+    if (auth && auth.token) {
+      pullFromCloud().catch(() => {
+        /* 離線時用本機 */
+      });
+    }
     tickClock();
     setInterval(tickClock, 1000);
 
@@ -1582,6 +1888,111 @@
       const d = document.getElementById("day-modal-date").value;
       if (d) sendDayToWhatsApp(d);
     });
+
+    // 常用地址管理
+    document
+      .getElementById("form-add-location")
+      .addEventListener("submit", (e) => {
+        e.preventDefault();
+        const v = document.getElementById("new-location").value.trim();
+        if (!v) {
+          toast("請輸入地址");
+          return;
+        }
+        rememberLocation(v);
+        saveState();
+        document.getElementById("new-location").value = "";
+        fillLocationSelects();
+        renderLocationManage();
+        toast("已加入常用地址");
+      });
+    document
+      .getElementById("location-manage-list")
+      .addEventListener("click", (e) => {
+        const btn = e.target.closest("[data-del-loc]");
+        if (!btn) return;
+        const loc = btn.getAttribute("data-del-loc");
+        if (!confirm("由常用選項移除「" + loc + "」？\n（舊紀錄唔會刪）")) return;
+        state.locations = (state.locations || []).filter((x) => x !== loc);
+        saveState();
+        fillLocationSelects();
+        renderLocationManage();
+        toast("已移除選項");
+      });
+
+    // 雲端帳號
+    async function handleLoginForm(user, pass) {
+      try {
+        await cloudLogin(user, pass);
+        closeLoginModal();
+      } catch (err) {
+        toast(err.message || "登入失敗");
+      }
+    }
+    document
+      .getElementById("form-cloud-login")
+      .addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const u = document.getElementById("cloud-username").value.trim();
+        const p = document.getElementById("cloud-password").value;
+        await handleLoginForm(u, p);
+      });
+    document
+      .getElementById("btn-cloud-register")
+      .addEventListener("click", async () => {
+        const u = document.getElementById("cloud-username").value.trim();
+        const p = document.getElementById("cloud-password").value;
+        if (!u || !p) {
+          toast("請填帳號同密碼");
+          return;
+        }
+        if (!state.me || !state.me.name) {
+          toast("請先儲存名字同時薪");
+          return;
+        }
+        try {
+          await cloudRegister(u, p);
+        } catch (err) {
+          toast(err.message || "註冊失敗");
+        }
+      });
+    document
+      .getElementById("btn-cloud-sync")
+      .addEventListener("click", () => {
+        pushToCloud(false).catch((e) => toast(e.message || "同步失敗"));
+      });
+    document
+      .getElementById("btn-cloud-pull")
+      .addEventListener("click", () => {
+        if (!confirm("用雲端資料覆蓋本機？本機未同步內容可能冇咗。")) return;
+        pullFromCloud().catch((e) => toast(e.message || "下載失敗"));
+      });
+    document
+      .getElementById("btn-cloud-logout")
+      .addEventListener("click", cloudLogout);
+
+    function openLoginModal() {
+      document.getElementById("login-modal").classList.remove("hidden");
+      document.body.style.overflow = "hidden";
+    }
+    function closeLoginModal() {
+      document.getElementById("login-modal").classList.add("hidden");
+      document.body.style.overflow = "";
+    }
+    document
+      .getElementById("btn-onboard-login")
+      .addEventListener("click", openLoginModal);
+    document.querySelectorAll("[data-close-login]").forEach((el) => {
+      el.addEventListener("click", closeLoginModal);
+    });
+    document
+      .getElementById("form-login-modal")
+      .addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const u = document.getElementById("login-modal-user").value.trim();
+        const p = document.getElementById("login-modal-pass").value;
+        await handleLoginForm(u, p);
+      });
     document.getElementById("btn-backup").addEventListener("click", backupJson);
     document.getElementById("btn-clear").addEventListener("click", clearAll);
     document.getElementById("input-restore").addEventListener("change", (e) => {
