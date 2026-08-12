@@ -1001,11 +1001,27 @@
     return `${Number(parts[1])}/${Number(parts[2])}`;
   }
 
+  /** 淨日數：1.4.10.15. （判頭格式） */
+  function formatDaysDots(isoDates) {
+    return isoDates
+      .slice()
+      .sort()
+      .map((d) => String(Number(d.split("-")[2])))
+      .join(".") + ".";
+  }
+
+  /** 金額淨數字（WhatsApp 精簡，唔加 $） */
+  function moneyNum(n) {
+    const v = Math.round((Number(n) || 0) * 100) / 100;
+    return Number.isInteger(v) ? String(v) : String(v);
+  }
+
   /**
-   * 按地點綜合工時／日數／人工（唔包純外快；外快另計）
+   * 按地點綜合（含每日人工，方便 日數*單價）
+   * 唔包純外快；段附帶額外亦唔計入地點（外快另欄）
    */
   function groupShiftsByLocation(shifts) {
-    /** @type {Map<string, { hours: number, base: number, dates: Set<string>, segs: number }>} */
+    /** @type {Map<string, { hours: number, base: number, dates: Set<string>, segs: number, dayPay: Map<string, number>, dayHours: Map<string, number>, dayTimes: Map<string, string[]> }>} */
     const map = new Map();
     shifts.forEach((s) => {
       if (isBonusOnly(s)) return;
@@ -1017,22 +1033,42 @@
         base: 0,
         dates: new Set(),
         segs: 0,
+        dayPay: new Map(),
+        dayHours: new Map(),
+        dayTimes: new Map(),
       };
       cur.hours += hours;
       cur.base += base;
       cur.dates.add(s.date);
       cur.segs += 1;
+      cur.dayPay.set(s.date, (cur.dayPay.get(s.date) || 0) + base);
+      cur.dayHours.set(s.date, (cur.dayHours.get(s.date) || 0) + hours);
+      const times = cur.dayTimes.get(s.date) || [];
+      if (s.start && s.end) times.push(`${s.start}-${s.end}`);
+      cur.dayTimes.set(s.date, times);
       map.set(loc, cur);
     });
     return [...map.entries()]
-      .map(([loc, d]) => ({
-        loc,
-        hours: Math.round(d.hours * 100) / 100,
-        base: Math.round(d.base * 100) / 100,
-        days: d.dates.size,
-        dates: [...d.dates].sort(),
-        segs: d.segs,
-      }))
+      .map(([loc, d]) => {
+        const dates = [...d.dates].sort();
+        const dayPays = dates.map((dt) =>
+          Math.round((d.dayPay.get(dt) || 0) * 100) / 100
+        );
+        const allSame =
+          dayPays.length > 0 && dayPays.every((p) => p === dayPays[0]);
+        return {
+          loc,
+          hours: Math.round(d.hours * 100) / 100,
+          base: Math.round(d.base * 100) / 100,
+          days: dates.length,
+          dates,
+          segs: d.segs,
+          dayPays,
+          unitPay: allSame ? dayPays[0] : null,
+          dayHours: d.dayHours,
+          dayTimes: d.dayTimes,
+        };
+      })
       .sort((a, b) => b.base - a.base);
   }
 
@@ -1819,13 +1855,17 @@
         if (locEmpty) locEmpty.classList.add("hidden");
         locBox.innerHTML = byLoc
           .map((g) => {
-            const dateList = g.dates.map(formatDateShort).join("、");
+            const dateList = formatDaysDots(g.dates);
+            const formula =
+              g.unitPay != null && g.unitPay > 0
+                ? `${g.days}×${moneyNum(g.unitPay)}=${moneyNum(g.base)}`
+                : `${g.days}日 合計${moneyNum(g.base)}`;
             return `
             <div class="pay-loc-row">
-              <div class="pay-loc-name">📍 ${escapeHtml(g.loc)}</div>
-              <div class="pay-loc-meta">${g.days} 日 · ${hoursLabel(
-              g.hours
-            )} · ${g.segs} 段<br>日子：${escapeHtml(dateList)}</div>
+              <div class="pay-loc-name">${escapeHtml(g.loc)}</div>
+              <div class="pay-loc-meta">${escapeHtml(dateList)}<br>${escapeHtml(
+              formula
+            )} · ${hoursLabel(g.hours)}</div>
               <div class="pay-loc-pay">${money(g.base)}</div>
             </div>`;
           })
@@ -1988,17 +2028,18 @@
   }
 
   /**
-   * 綜合成月 WhatsApp（精簡版，方便判頭一眼睇）
-   * 1) 合計一覽
-   * 2) 按地點綜合：幾多日、幾多工時、幾多錢、日子列表
-   * 3) 特別外快分開
+   * 綜合成月 WhatsApp — 判頭易睇格式
+   * 海景
+   * 1.4.10.14.15.
+   * 5*425=2125
+   *
+   * 特別日子
+   * 2/7 1000
    */
   function buildMonthWhatsAppMessage(ym) {
     const shifts = shiftsInMonth(ym);
     const name = state.me?.name || "救生員";
     const rate = myRate();
-    const byDay = groupByDay(shifts);
-    const dayKeys = [...byDay.keys()].sort((a, b) => a.localeCompare(b));
     const byLoc = groupShiftsByLocation(shifts);
     const extras = collectExtras(shifts);
 
@@ -2017,75 +2058,59 @@
     const totalPay = Math.round((totalBase + totalBonus) * 100) / 100;
 
     const lines = [];
-    // —— 頭部一覽（判頭最先見到）——
-    lines.push("🏊 救生員人工結算（精簡）");
-    lines.push(`${monthLabelZh(ym)}｜${name}`);
-    lines.push(`時薪 ${money(rate)}/時`);
-    lines.push("——————————");
-    lines.push("【一覽】");
-    lines.push(`返工 ${dayKeys.length} 日｜工時 ${hoursLabel(totalH)}`);
-    lines.push(`時薪人工 ${money(totalBase)}`);
-    lines.push(`特別外快 ${money(totalBonus)}`);
-    lines.push(`✅ 應付合計 ${money(totalPay)}`);
-    lines.push("——————————");
+    lines.push(`${name} 人工結算`);
+    lines.push(`${monthLabelZh(ym)}  時薪${moneyNum(rate)}`);
+    lines.push("");
 
-    // —— 按地點綜合 ——
-    lines.push("【按地點綜合】");
-    if (!byLoc.length) {
-      lines.push("（未有返工時段）");
-    } else {
-      byLoc.forEach((g, i) => {
-        const dateList = g.dates.map(formatDateShort).join("、");
-        lines.push(`${i + 1}) 📍${g.loc}`);
-        lines.push(
-          `   ${g.days}日｜${hoursLabel(g.hours)}｜${money(g.base)}`
-        );
-        lines.push(`   日子：${dateList}`);
-      });
-    }
-
-    // —— 特別外快分開 ——
-    lines.push("——————————");
-    lines.push("【特別外快】（另計）");
-    if (!extras.length) {
-      lines.push("無");
-    } else {
-      extras.forEach((x) => {
-        let line = `・${formatDateShort(x.date)} +${money(x.amount)}`;
-        if (x.location) line += `｜${x.location}`;
-        if (x.note && x.note !== "彈性返工" && x.note !== "判頭額外人工") {
-          line += `（${x.note}）`;
+    // —— 各地點：日子一排 → 下邊總數 ——
+    byLoc.forEach((g) => {
+      lines.push(g.loc);
+      // 單日 + 只有一段 → 顯示時間（似你示例 11 / 15:30-21:30 / 510）
+      if (g.days === 1 && g.segs === 1) {
+        const d0 = g.dates[0];
+        const times = (g.dayTimes && g.dayTimes.get(d0)) || [];
+        lines.push(String(Number(d0.split("-")[2])));
+        if (times[0]) lines.push(times[0]);
+        lines.push(moneyNum(g.base));
+      } else {
+        // 多日：1.4.10.7.14.15.
+        lines.push(formatDaysDots(g.dates));
+        lines.push("");
+        if (g.unitPay != null && g.unitPay > 0) {
+          // 10*425=4250（每日人工相同）
+          lines.push(
+            `${g.days}*${moneyNum(g.unitPay)}=${moneyNum(g.base)}`
+          );
+        } else {
+          // 每日唔同：寫合計
+          lines.push(`${g.days}日 合計${moneyNum(g.base)}`);
         }
-        lines.push(line);
-      });
-      lines.push(`外快合計 ${money(totalBonus)}`);
-    }
-
-    // —— 日子速查（一行一個，極短）——
-    lines.push("——————————");
-    lines.push("【日子速查】");
-    dayKeys.forEach((date) => {
-      const segs = byDay.get(date) || [];
-      const t = dayTotals(segs);
-      const locs = [
-        ...new Set(
-          segs
-            .filter((s) => !isBonusOnly(s))
-            .map((s) => (s.location || "").trim())
-            .filter(Boolean)
-        ),
-      ];
-      const locTxt = locs.length ? locs.join("/") : "—";
-      const ex = t.bonus > 0 ? `｜外快${money(t.bonus)}` : "";
-      lines.push(
-        `${formatDateShort(date)} ${hoursLabel(t.hours)} ${locTxt} ${money(
-          t.pay
-        )}${ex}`
-      );
+      }
+      lines.push("");
     });
 
+    // —— 特別日子 / 外快（分開）——
+    if (extras.length) {
+      lines.push("特別日子");
+      extras.forEach((x) => {
+        const md = formatDateShort(x.date); // 2/7
+        let line = `${md}  ${moneyNum(x.amount)}`;
+        // 若有工時可附（x.time 存在時試計）
+        if (x.note && x.note !== "彈性返工" && x.note !== "判頭額外人工") {
+          line += `  ${x.note}`;
+        }
+        if (x.location) line += `  ${x.location}`;
+        lines.push(line);
+      });
+      lines.push("");
+    }
+
     lines.push("——————————");
-    lines.push(`✅ 應付合計 ${money(totalPay)}`);
+    lines.push(`工時 ${hoursLabel(totalH)}`);
+    lines.push(`時薪人工 ${moneyNum(totalBase)}`);
+    if (totalBonus > 0) lines.push(`特別日子 ${moneyNum(totalBonus)}`);
+    lines.push(`合計 ${moneyNum(totalPay)}`);
+    lines.push("");
     lines.push("請核對，謝謝");
     return lines.join("\n");
   }
