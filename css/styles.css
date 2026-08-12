@@ -775,6 +775,65 @@ button.segment-row:active {
   white-space: nowrap;
 }
 
+.pay-loc-summary,
+.pay-extra-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.pay-loc-row,
+.pay-extra-row {
+  padding: 12px 14px;
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  border: 1px solid var(--border);
+}
+
+.pay-loc-name {
+  font-weight: 800;
+  font-size: 0.98rem;
+  margin-bottom: 4px;
+}
+
+.pay-loc-meta {
+  font-size: 0.85rem;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.pay-loc-pay {
+  margin-top: 6px;
+  font-weight: 800;
+  color: var(--primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.pay-extra-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.pay-extra-main {
+  font-weight: 700;
+  font-size: 0.9rem;
+}
+
+.pay-extra-sub {
+  font-size: 0.8rem;
+  color: var(--muted);
+  margin-top: 2px;
+}
+
+.pay-extra-amt {
+  font-weight: 800;
+  color: #b45309;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
 .today-total-item {
   display: flex;
   flex-direction: column;

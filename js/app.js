@@ -950,8 +950,71 @@
     return d;
   }
 
+  /** 短日期：8/1（月報用，慳位） */
+  function formatDateShort(isoDate) {
+    if (!isoDate) return "—";
+    const parts = isoDate.split("-");
+    return `${Number(parts[1])}/${Number(parts[2])}`;
+  }
+
   /**
-   * 產生某日結算 WhatsApp 訊息（純文字，方便判頭做紀錄）
+   * 按地點綜合工時／日數／人工（唔包純外快；外快另計）
+   */
+  function groupShiftsByLocation(shifts) {
+    /** @type {Map<string, { hours: number, base: number, dates: Set<string>, segs: number }>} */
+    const map = new Map();
+    shifts.forEach((s) => {
+      if (isBonusOnly(s)) return;
+      const loc = (s.location || "").trim() || "未填地址";
+      const hours = calcHours(s.date, s.start, s.end);
+      const base = calcPay(hours, shiftRate(s));
+      const cur = map.get(loc) || {
+        hours: 0,
+        base: 0,
+        dates: new Set(),
+        segs: 0,
+      };
+      cur.hours += hours;
+      cur.base += base;
+      cur.dates.add(s.date);
+      cur.segs += 1;
+      map.set(loc, cur);
+    });
+    return [...map.entries()]
+      .map(([loc, d]) => ({
+        loc,
+        hours: Math.round(d.hours * 100) / 100,
+        base: Math.round(d.base * 100) / 100,
+        days: d.dates.size,
+        dates: [...d.dates].sort(),
+        segs: d.segs,
+      }))
+      .sort((a, b) => b.base - a.base);
+  }
+
+  /** 抽出所有外快（純外快 + 返工段附帶額外） */
+  function collectExtras(shifts) {
+    const items = [];
+    shifts.forEach((s) => {
+      const bn = shiftBonus(s);
+      if (bn <= 0) return;
+      items.push({
+        date: s.date,
+        amount: bn,
+        location: (s.location || "").trim(),
+        note: (s.note || "").trim(),
+        only: isBonusOnly(s),
+        time:
+          !isBonusOnly(s) && s.start && s.end
+            ? `${s.start}–${s.end}`
+            : "",
+      });
+    });
+    return items.sort((a, b) => a.date.localeCompare(b.date));
+  }
+
+  /**
+   * 產生某日結算 WhatsApp（精簡：工時／地址／外快分開）
    */
   function buildDayWhatsAppMessage(date) {
     const segs = state.shifts
@@ -964,46 +1027,47 @@
     const t = dayTotals(segs);
     const name = state.me?.name || "救生員";
     const rate = myRate();
+    const byLoc = groupShiftsByLocation(segs);
+    const extras = collectExtras(segs);
     const lines = [];
-    lines.push("🏊 救生員工時結算");
+    lines.push("🏊 救生員當日結算");
+    lines.push(`📅 ${formatDateFull(date)}`);
+    lines.push(`${name}｜時薪 ${money(rate)}/時`);
     lines.push("——————————");
-    lines.push(`日期：${formatDateFull(date)}`);
-    lines.push(`姓名：${name}`);
-    lines.push(`時薪：${money(rate)}/時`);
-    lines.push("——————————");
-
-    if (!segs.length) {
-      lines.push("（當日未有紀錄）");
-    } else {
-      let i = 0;
+    if (byLoc.length) {
+      lines.push("【返工】");
+      byLoc.forEach((g) => {
+        lines.push(
+          `📍${g.loc}｜${hoursLabel(g.hours)}｜${money(g.base)}`
+        );
+      });
+      // 精簡時段
       segs.forEach((s) => {
-        if (isBonusOnly(s)) {
-          lines.push(
-            `・判頭額外 ${money(shiftBonus(s))}${
-              s.location ? " · " + s.location : ""
-            }${s.note ? "（" + s.note + "）" : ""}`
-          );
-        } else {
-          i += 1;
-          const h = calcHours(s.date, s.start, s.end);
-          const base = calcPay(h, shiftRate(s));
-          const bonus = shiftBonus(s);
-          let line = `・第${i}段 ${s.start}–${s.end}　${hoursLabel(h)}　時薪人工 ${money(base)}`;
-          if (bonus > 0) line += ` + 額外 ${money(bonus)}`;
-          if (s.location) line += `\n　位置：${s.location}`;
-          if (s.note && s.note !== "彈性返工") line += `\n　備註：${s.note}`;
-          lines.push(line);
-        }
+        if (isBonusOnly(s)) return;
+        const h = calcHours(s.date, s.start, s.end);
+        lines.push(
+          `  ${s.start}–${s.end} ${hoursLabel(h)}${
+            s.location ? " @" + s.location : ""
+          }`
+        );
       });
     }
-
+    if (extras.length) {
+      lines.push("【特別外快】");
+      extras.forEach((x) => {
+        lines.push(
+          `💰+${money(x.amount)}${x.location ? "｜" + x.location : ""}${
+            x.note && x.note !== "彈性返工" ? "（" + x.note + "）" : ""
+          }`
+        );
+      });
+    }
+    if (!byLoc.length && !extras.length) {
+      lines.push("（當日未有紀錄）");
+    }
     lines.push("——————————");
-    lines.push(`總工時：${hoursLabel(t.hours)}`);
-    lines.push(`時薪人工：${money(t.base)}`);
-    lines.push(`判頭額外：${money(t.bonus)}`);
-    lines.push(`✅ 當日合計：${money(t.pay)}`);
-    lines.push("——————————");
-    lines.push("（由「我的工時」App 自動產生，方便雙方做紀錄）");
+    lines.push(`工時 ${hoursLabel(t.hours)}｜時薪人工 ${money(t.base)}`);
+    lines.push(`外快 ${money(t.bonus)}｜✅合計 ${money(t.pay)}`);
     return lines.join("\n");
   }
 
@@ -1614,6 +1678,71 @@
     const countEl = document.getElementById("pay-detail-count");
     if (countEl) countEl.textContent = `${shifts.length} 項`;
 
+    // 按地點綜合（App 預覽）
+    const byLoc = groupShiftsByLocation(shifts);
+    const locBox = document.getElementById("pay-loc-summary");
+    const locEmpty = document.getElementById("pay-loc-empty");
+    const locCount = document.getElementById("pay-loc-count");
+    if (locCount) locCount.textContent = `${byLoc.length} 個地點`;
+    if (locBox) {
+      if (!byLoc.length) {
+        locBox.innerHTML = "";
+        if (locEmpty) locEmpty.classList.remove("hidden");
+      } else {
+        if (locEmpty) locEmpty.classList.add("hidden");
+        locBox.innerHTML = byLoc
+          .map((g) => {
+            const dateList = g.dates.map(formatDateShort).join("、");
+            return `
+            <div class="pay-loc-row">
+              <div class="pay-loc-name">📍 ${escapeHtml(g.loc)}</div>
+              <div class="pay-loc-meta">${g.days} 日 · ${hoursLabel(
+              g.hours
+            )} · ${g.segs} 段<br>日子：${escapeHtml(dateList)}</div>
+              <div class="pay-loc-pay">${money(g.base)}</div>
+            </div>`;
+          })
+          .join("");
+      }
+    }
+
+    // 特別外快預覽
+    const extras = collectExtras(shifts);
+    const extraBox = document.getElementById("pay-extra-list");
+    const extraEmpty = document.getElementById("pay-extra-empty");
+    const extraCount = document.getElementById("pay-extra-count");
+    if (extraCount) extraCount.textContent = money(bonus);
+    if (extraBox) {
+      if (!extras.length) {
+        extraBox.innerHTML = "";
+        if (extraEmpty) extraEmpty.classList.remove("hidden");
+      } else {
+        if (extraEmpty) extraEmpty.classList.add("hidden");
+        extraBox.innerHTML = extras
+          .map((x) => {
+            const note =
+              x.note && x.note !== "彈性返工" && x.note !== "判頭額外人工"
+                ? escapeHtml(x.note)
+                : x.only
+                  ? "特別外快"
+                  : "段附帶額外";
+            return `
+            <div class="pay-extra-row">
+              <div>
+                <div class="pay-extra-main">${formatDateZh(x.date)}${
+              x.location ? " · " + escapeHtml(x.location) : ""
+            }</div>
+                <div class="pay-extra-sub">${note}${
+              x.time ? " · " + x.time : ""
+            }</div>
+              </div>
+              <div class="pay-extra-amt">+${money(x.amount)}</div>
+            </div>`;
+          })
+          .join("");
+      }
+    }
+
     const waBtn = document.getElementById("btn-wa-month");
     const waStatus = document.getElementById("pay-wa-status");
     if (waBtn) waBtn.disabled = !shifts.length;
@@ -1621,9 +1750,9 @@
       if (!shifts.length) {
         waStatus.textContent = "未有紀錄可傳";
       } else {
-        waStatus.textContent = `將傳送 ${monthLabelZh(ym)} 共 ${
+        waStatus.textContent = `精簡傳送：${byLoc.length} 個地點 · ${
           days.size
-        } 日 · ${shifts.length} 項詳細紀錄 · 合計 ${money(p)}`;
+        } 日 · 外快 ${money(bonus)} · 合計 ${money(p)}`;
       }
     }
 
@@ -1732,7 +1861,10 @@
   }
 
   /**
-   * 綜合成月 WhatsApp 訊息：全部日子、時間、地址、工時、人工
+   * 綜合成月 WhatsApp（精簡版，方便判頭一眼睇）
+   * 1) 合計一覽
+   * 2) 按地點綜合：幾多日、幾多工時、幾多錢、日子列表
+   * 3) 特別外快分開
    */
   function buildMonthWhatsAppMessage(ym) {
     const shifts = shiftsInMonth(ym);
@@ -1740,6 +1872,8 @@
     const rate = myRate();
     const byDay = groupByDay(shifts);
     const dayKeys = [...byDay.keys()].sort((a, b) => a.localeCompare(b));
+    const byLoc = groupShiftsByLocation(shifts);
+    const extras = collectExtras(shifts);
 
     let totalH = 0;
     let totalBase = 0;
@@ -1756,61 +1890,76 @@
     const totalPay = Math.round((totalBase + totalBonus) * 100) / 100;
 
     const lines = [];
-    lines.push("🏊 救生員人工綜合結算");
+    // —— 頭部一覽（判頭最先見到）——
+    lines.push("🏊 救生員人工結算（精簡）");
+    lines.push(`${monthLabelZh(ym)}｜${name}`);
+    lines.push(`時薪 ${money(rate)}/時`);
     lines.push("——————————");
-    lines.push(`時期：${monthLabelZh(ym)}`);
-    lines.push(`姓名：${name}`);
-    lines.push(`時薪：${money(rate)}/時`);
-    lines.push(`返工日數：${dayKeys.length} 日`);
-    lines.push(`紀錄項數：${shifts.length} 項`);
+    lines.push("【一覽】");
+    lines.push(`返工 ${dayKeys.length} 日｜工時 ${hoursLabel(totalH)}`);
+    lines.push(`時薪人工 ${money(totalBase)}`);
+    lines.push(`特別外快 ${money(totalBonus)}`);
+    lines.push(`✅ 應付合計 ${money(totalPay)}`);
     lines.push("——————————");
-    lines.push("【詳細紀錄】");
 
-    dayKeys.forEach((date, di) => {
-      const segs = (byDay.get(date) || []).slice().sort((a, b) => {
-        const ta = a.start || "99:99";
-        const tb = b.start || "99:99";
-        return ta.localeCompare(tb);
+    // —— 按地點綜合 ——
+    lines.push("【按地點綜合】");
+    if (!byLoc.length) {
+      lines.push("（未有返工時段）");
+    } else {
+      byLoc.forEach((g, i) => {
+        const dateList = g.dates.map(formatDateShort).join("、");
+        lines.push(`${i + 1}) 📍${g.loc}`);
+        lines.push(
+          `   ${g.days}日｜${hoursLabel(g.hours)}｜${money(g.base)}`
+        );
+        lines.push(`   日子：${dateList}`);
       });
-      const t = dayTotals(segs);
-      lines.push("");
-      lines.push(`${di + 1}) ${formatDateFull(date)}`);
-      let n = 0;
-      segs.forEach((s) => {
-        if (isBonusOnly(s)) {
-          lines.push(
-            `   ・判頭額外 ${money(shiftBonus(s))}${
-              s.location ? "｜📍" + s.location : ""
-            }${s.note ? "（" + s.note + "）" : ""}`
-          );
-        } else {
-          n += 1;
-          const hours = calcHours(s.date, s.start, s.end);
-          const b = calcPay(hours, shiftRate(s));
-          const bn = shiftBonus(s);
-          let line = `   ・${s.start}–${s.end}｜${hoursLabel(hours)}｜人工 ${money(
-            b + bn
-          )}`;
-          if (s.location) line += `\n     📍地址：${s.location}`;
-          if (bn > 0) line += `\n     （含額外 ${money(bn)}）`;
-          if (s.note && s.note !== "彈性返工") line += `\n     備註：${s.note}`;
-          lines.push(line);
+    }
+
+    // —— 特別外快分開 ——
+    lines.push("——————————");
+    lines.push("【特別外快】（另計）");
+    if (!extras.length) {
+      lines.push("無");
+    } else {
+      extras.forEach((x) => {
+        let line = `・${formatDateShort(x.date)} +${money(x.amount)}`;
+        if (x.location) line += `｜${x.location}`;
+        if (x.note && x.note !== "彈性返工" && x.note !== "判頭額外人工") {
+          line += `（${x.note}）`;
         }
+        lines.push(line);
       });
+      lines.push(`外快合計 ${money(totalBonus)}`);
+    }
+
+    // —— 日子速查（一行一個，極短）——
+    lines.push("——————————");
+    lines.push("【日子速查】");
+    dayKeys.forEach((date) => {
+      const segs = byDay.get(date) || [];
+      const t = dayTotals(segs);
+      const locs = [
+        ...new Set(
+          segs
+            .filter((s) => !isBonusOnly(s))
+            .map((s) => (s.location || "").trim())
+            .filter(Boolean)
+        ),
+      ];
+      const locTxt = locs.length ? locs.join("/") : "—";
+      const ex = t.bonus > 0 ? `｜外快${money(t.bonus)}` : "";
       lines.push(
-        `   ▶ 當日小計：${hoursLabel(t.hours)} · ${money(t.pay)}`
+        `${formatDateShort(date)} ${hoursLabel(t.hours)} ${locTxt} ${money(
+          t.pay
+        )}${ex}`
       );
     });
 
-    lines.push("");
     lines.push("——————————");
-    lines.push("【合計】");
-    lines.push(`總工時：${hoursLabel(totalH)}`);
-    lines.push(`時薪人工：${money(totalBase)}`);
-    lines.push(`判頭額外：${money(totalBonus)}`);
-    lines.push(`✅ 應付合計：${money(totalPay)}`);
-    lines.push("——————————");
-    lines.push("（由「我的工時」App 綜合產生，方便判頭對數／出糧）");
+    lines.push(`✅ 應付合計 ${money(totalPay)}`);
+    lines.push("請核對，謝謝");
     return lines.join("\n");
   }
 

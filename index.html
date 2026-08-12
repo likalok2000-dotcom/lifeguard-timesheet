@@ -265,15 +265,36 @@
             </div>
           </div>
 
+          <!-- 按地點綜合（App 內預覽，同 WhatsApp 一致） -->
+          <div class="card">
+            <div class="card-head">
+              <h2 class="card-title">按地點綜合</h2>
+              <span class="badge" id="pay-loc-count">0 個地點</span>
+            </div>
+            <p class="muted small">同一地點返咗幾多日、幾多工時、幾多錢 · 一眼睇晒</p>
+            <div id="pay-loc-summary" class="pay-loc-summary"></div>
+            <p class="empty-state small-empty hidden" id="pay-loc-empty">未有返工地點紀錄</p>
+          </div>
+
+          <div class="card">
+            <div class="card-head">
+              <h2 class="card-title">特別外快</h2>
+              <span class="badge" id="pay-extra-count">$0</span>
+            </div>
+            <p class="muted small">特別日子外快會分開列，方便判頭對數</p>
+            <div id="pay-extra-list" class="pay-extra-list"></div>
+            <p class="empty-state small-empty hidden" id="pay-extra-empty">呢個月無特別外快</p>
+          </div>
+
           <!-- 一鍵 WhatsApp 綜合結算 -->
           <div class="card wa-month-card">
-            <h2 class="card-title">傳俾判頭</h2>
-            <p class="muted small">將呢個月<strong>全部詳細紀錄</strong>（日子、時間、地址、工時、人工）一次過寫好，開 WhatsApp 傳送。</p>
+            <h2 class="card-title">傳俾判頭（精簡版）</h2>
+            <p class="muted small">訊息會<strong>按地點綜合日數</strong>，外快分開，日子速查一行一個 · 判頭唔使睇超長訊息。</p>
             <button type="button" class="btn btn-whatsapp btn-block" id="btn-wa-month">
               綜合結算 · WhatsApp 傳俾判頭
             </button>
-            <p class="muted small tip-line" id="pay-wa-status">訊息包含所有日子、地址同人工合計</p>
-            <button type="button" class="btn btn-ghost btn-block" id="btn-export" style="margin-top:8px">匯出 CSV（Excel）</button>
+            <p class="muted small tip-line" id="pay-wa-status">按地點 + 外快分開 + 日子速查</p>
+            <button type="button" class="btn btn-ghost btn-block" id="btn-export" style="margin-top:8px">匯出 CSV（Excel 詳細）</button>
           </div>
 
           <div class="card">
