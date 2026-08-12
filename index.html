@@ -162,10 +162,15 @@
 
           <div class="card">
             <h2 class="card-title">補記一小時段</h2>
-            <p class="muted small">漏咗打卡？補返時間，亦可一齊寫判頭額外</p>
+            <p class="muted small">漏咗打卡？補返時間。儲存後會<strong>記住時段</strong>，下次唔使重設。</p>
             <form id="form-manual" class="form-stack">
               <label class="field-label" for="manual-date">日期</label>
               <input type="date" id="manual-date" class="text-input" required />
+
+              <label class="field-label">常用時段（撳一下就用 · 全部顯示）</label>
+              <div class="location-chips" id="manual-time-chips"></div>
+              <p class="muted small tip-line" id="manual-time-empty">未有常用時段 · 下面填時間後儲存會自動記住</p>
+
               <div class="row-2">
                 <div>
                   <label class="field-label" for="manual-start">開始</label>
@@ -176,6 +181,10 @@
                   <input type="time" id="manual-end" class="text-input" required />
                 </div>
               </div>
+              <button type="button" class="btn btn-ghost btn-block" id="btn-save-time-preset" style="margin-top:4px">
+                記住呢個時段（加入常用）
+              </button>
+
               <div class="location-picker" data-target="manual-location">
                 <label class="field-label">返工地點（撳選 · 全部顯示）</label>
                 <div class="location-chips" data-chips-for="manual-location"></div>
@@ -204,6 +213,7 @@
                 <p class="pay-formula muted small" id="manual-preview-detail">工時 × 時薪 + 額外</p>
               </div>
               <button type="submit" class="btn btn-secondary btn-block">儲存並計人工</button>
+              <p class="muted small tip-line" id="manual-remember-hint">儲存後會保留時間同地點，方便連續補記其他日子</p>
             </form>
           </div>
         </section>

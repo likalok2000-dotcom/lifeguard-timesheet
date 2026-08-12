@@ -154,6 +154,8 @@ function defaultUserData() {
     active: null,
     sentLog: {},
     locations: [],
+    timePresets: [],
+    manualPref: { start: "", end: "", location: "" },
     updatedAt: new Date().toISOString(),
   };
 }
@@ -220,6 +222,8 @@ async function handleApi(request, env, pathname) {
       }
       if (Array.isArray(body.shifts)) init.shifts = body.shifts;
       if (Array.isArray(body.locations)) init.locations = body.locations;
+      if (Array.isArray(body.timePresets)) init.timePresets = body.timePresets;
+      if (body.manualPref) init.manualPref = body.manualPref;
       if (body.sentLog) init.sentLog = body.sentLog;
       init.updatedAt = new Date().toISOString();
       await env.DB.put(dataKey(username), JSON.stringify(init));
@@ -281,6 +285,12 @@ async function handleApi(request, env, pathname) {
               ? body.sentLog
               : {},
           locations: Array.isArray(body.locations) ? body.locations : [],
+          timePresets: Array.isArray(body.timePresets) ? body.timePresets : [],
+          manualPref: body.manualPref || {
+            start: "",
+            end: "",
+            location: "",
+          },
           updatedAt: new Date().toISOString(),
         };
         await env.DB.put(dataKey(username), JSON.stringify(payload));

@@ -38,6 +38,10 @@
       active: null,
       sentLog: {},
       locations: [],
+      /** @type {{ start: string, end: string }[]} */
+      timePresets: [],
+      /** 上次補記保留：時間／地點 */
+      manualPref: { start: "", end: "", location: "" },
     };
   }
 
@@ -57,12 +61,33 @@
     fromShifts.forEach((loc) => {
       if (!locations.includes(loc)) locations.push(loc);
     });
+    // 常用時段：儲存過的 + 由舊紀錄推斷
+    let timePresets = Array.isArray(p.timePresets)
+      ? p.timePresets
+          .filter((t) => t && t.start && t.end)
+          .map((t) => ({ start: t.start, end: t.end }))
+      : [];
+    shifts.forEach((s) => {
+      if (!s.start || !s.end || isBonusOnly(s)) return;
+      const key = s.start + "|" + s.end;
+      if (!timePresets.some((t) => t.start + "|" + t.end === key)) {
+        timePresets.push({ start: s.start, end: s.end });
+      }
+    });
+    timePresets = timePresets.slice(0, 20);
+    const pref = p.manualPref || {};
     return {
       me: p.me || null,
       shifts,
       active: p.active || null,
       sentLog: p.sentLog && typeof p.sentLog === "object" ? p.sentLog : {},
       locations,
+      timePresets,
+      manualPref: {
+        start: pref.start || "",
+        end: pref.end || "",
+        location: pref.location || "",
+      },
     };
   }
 
@@ -203,6 +228,8 @@
           active: state.active,
           sentLog: state.sentLog,
           locations: state.locations,
+          timePresets: state.timePresets,
+          manualPref: state.manualPref,
         }),
       });
       if (!silent) toast("已同步到雲端資料庫");
@@ -241,6 +268,8 @@
         me: state.me,
         shifts: state.shifts,
         locations: state.locations,
+        timePresets: state.timePresets,
+        manualPref: state.manualPref,
         sentLog: state.sentLog,
       }),
     });
@@ -364,6 +393,19 @@
         const targetId = chip.getAttribute("data-for");
         const loc = chip.getAttribute("data-loc") || "";
         selectLocation(targetId, loc);
+        return;
+      }
+      // 常用時段 chip
+      const timeChip = e.target.closest(".time-chip[data-time-start]");
+      if (timeChip) {
+        e.preventDefault();
+        const s = timeChip.getAttribute("data-time-start") || "";
+        const en = timeChip.getAttribute("data-time-end") || "";
+        document.getElementById("manual-start").value = s;
+        document.getElementById("manual-end").value = en;
+        fillTimePresets();
+        updateManualPreview();
+        toast("已套用時段 " + s + "–" + en);
         return;
       }
       // 加入按鈕（各表單）
@@ -572,6 +614,8 @@
       updateHeader();
       updateClockUI();
       fillLocationSelects();
+      fillTimePresets();
+      applyManualPref();
       renderLocationManage();
       updateCloudUI();
       renderToday();
@@ -1161,6 +1205,69 @@
     }
   }
 
+  /** 記住常用時段（開始–結束） */
+  function rememberTimePreset(start, end) {
+    if (!start || !end) return false;
+    if (!Array.isArray(state.timePresets)) state.timePresets = [];
+    const key = start + "|" + end;
+    state.timePresets = [
+      { start, end },
+      ...state.timePresets.filter((t) => t.start + "|" + t.end !== key),
+    ].slice(0, 20);
+    return true;
+  }
+
+  function fillTimePresets() {
+    const box = document.getElementById("manual-time-chips");
+    const empty = document.getElementById("manual-time-empty");
+    if (!box) return;
+    const presets = Array.isArray(state.timePresets) ? state.timePresets : [];
+    const curS = document.getElementById("manual-start")?.value || "";
+    const curE = document.getElementById("manual-end")?.value || "";
+    if (!presets.length) {
+      box.innerHTML = "";
+      if (empty) empty.classList.remove("hidden");
+      return;
+    }
+    if (empty) empty.classList.add("hidden");
+    box.innerHTML = presets
+      .map((t) => {
+        const on =
+          t.start === curS && t.end === curE ? " selected" : "";
+        const h = calcHours(todayStr(), t.start, t.end);
+        return (
+          '<button type="button" class="location-chip time-chip' +
+          on +
+          '" data-time-start="' +
+          escapeHtml(t.start) +
+          '" data-time-end="' +
+          escapeHtml(t.end) +
+          '">' +
+          escapeHtml(t.start) +
+          "–" +
+          escapeHtml(t.end) +
+          (h > 0 ? " · " + hoursLabel(h) : "") +
+          "</button>"
+        );
+      })
+      .join("");
+  }
+
+  function applyManualPref() {
+    const pref = state.manualPref || {};
+    const startEl = document.getElementById("manual-start");
+    const endEl = document.getElementById("manual-end");
+    const locEl = document.getElementById("manual-location");
+    if (startEl && pref.start) startEl.value = pref.start;
+    if (endEl && pref.end) endEl.value = pref.end;
+    if (locEl && pref.location) {
+      locEl.value = pref.location;
+      selectLocation("manual-location", pref.location);
+    }
+    fillTimePresets();
+    updateManualPreview();
+  }
+
   function addManual(e) {
     e.preventDefault();
     if (!state.me) return;
@@ -1186,6 +1293,9 @@
     const base = calcPay(h, rate);
     const pay = base + bonus;
     if (location) rememberLocation(location);
+    // 自動記住時段 + 上次補記偏好
+    rememberTimePreset(start, end);
+    state.manualPref = { start, end, location };
     state.shifts.push({
       id: uid(),
       date,
@@ -1199,17 +1309,34 @@
       createdAt: new Date().toISOString(),
     });
     saveState();
-    e.target.reset();
-    document.getElementById("manual-date").value = todayStr();
+    // 保留時間／地點，方便連續補其他日子；只清額外同備註
+    document.getElementById("manual-bonus").value = "";
+    document.getElementById("manual-note").value = "";
+    // 日期預設加一日，方便連續補
+    try {
+      const d = new Date(date + "T12:00:00");
+      d.setDate(d.getDate() + 1);
+      document.getElementById("manual-date").value =
+        d.getFullYear() +
+        "-" +
+        pad(d.getMonth() + 1) +
+        "-" +
+        pad(d.getDate());
+    } catch {
+      document.getElementById("manual-date").value = todayStr();
+    }
+    document.getElementById("manual-start").value = start;
+    document.getElementById("manual-end").value = end;
+    document.getElementById("manual-location").value = location;
     fillLocationSelects();
+    fillTimePresets();
+    selectLocation("manual-location", location);
     updateManualPreview();
     renderToday();
     renderHistory();
     renderPay();
     toast(
-      `已自動儲存 · ${hoursLabel(h)} · 合計 ${money(pay)}${
-        bonus > 0 ? "（含額外 " + money(bonus) + "）" : ""
-      }`
+      `已儲存 · ${hoursLabel(h)} · ${money(pay)} · 時段已記住，可改日期再存`
     );
   }
 
@@ -2217,6 +2344,7 @@
 
     bindLocationPicks();
     showApp();
+    applyManualPref();
     // 若已登入，背景靜默同步一次
     if (auth && auth.token) {
       pullFromCloud().catch(() => {
@@ -2240,7 +2368,37 @@
         el.addEventListener("input", updateManualPreview);
       }
     );
+    ["manual-start", "manual-end"].forEach((id) => {
+      const el = document.getElementById(id);
+      if (el) {
+        el.addEventListener("change", () => fillTimePresets());
+      }
+    });
+    document
+      .getElementById("btn-save-time-preset")
+      .addEventListener("click", () => {
+        const s = document.getElementById("manual-start").value;
+        const en = document.getElementById("manual-end").value;
+        if (!s || !en) {
+          toast("請先填開始同結束時間");
+          return;
+        }
+        if (calcHours(todayStr(), s, en) <= 0) {
+          toast("結束要遲過開始");
+          return;
+        }
+        rememberTimePreset(s, en);
+        state.manualPref = {
+          ...(state.manualPref || {}),
+          start: s,
+          end: en,
+        };
+        saveState();
+        fillTimePresets();
+        toast("已記住時段 " + s + "–" + en + " · 下次一撳就用");
+      });
     updateManualPreview();
+    fillTimePresets();
 
     document.querySelectorAll(".tab-item").forEach((btn) => {
       btn.addEventListener("click", () => switchTab(btn.dataset.tab));

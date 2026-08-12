@@ -648,6 +648,10 @@ button.segment-row:active {
   margin-top: 0 !important;
 }
 
+.time-chip {
+  font-variant-numeric: tabular-nums;
+}
+
 .location-empty-hint {
   margin: 0 0 8px !important;
 }
